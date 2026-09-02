@@ -97,8 +97,8 @@ end
     @test time_limits.up ≈ 480.0
     @test time_limits.down ≈ 240.0
     # No Status at Start column in RTS, so the descriptor default applies.
-    @test PDP.get_value(steam, :status)
-    @test !PDP.get_value(steam, :must_run)
+    @test PDP.get_value(steam, :status) == "ONLINE"
+    @test PDP.get_value(steam, :commitment_mode) == "COMMITTED"
 end
 
 @testset "synchronous condensers fall back to the system base" begin

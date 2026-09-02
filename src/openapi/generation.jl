@@ -194,6 +194,105 @@ function _active_power_limits(gen::NamedTuple)
     return (min = gen.active_power_limits_min, max = gen.active_power_limits_max)
 end
 
+"""Schema enum values for `status` on `ThermalStandard` / `ThermalMultiStart`."""
+const THERMAL_STATUS_ENUM_VALUES = ("OFFLINE", "STARTUP", "ONLINE", "SHUTDOWN")
+
+function _thermal_status(gen_name::AbstractString, value::Bool)
+    if value
+        return "ONLINE"
+    end
+    return "OFFLINE"
+end
+
+function _thermal_status(gen_name::AbstractString, value::Integer)
+    if isone(value)
+        return "ONLINE"
+    elseif iszero(value)
+        return "OFFLINE"
+    end
+    throw(
+        IS.DataFormatError(
+            "invalid status_at_start=$value for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
+function _thermal_status(gen_name::AbstractString, value::AbstractString)
+    upper = uppercase(value)
+    if upper in THERMAL_STATUS_ENUM_VALUES
+        return upper
+    end
+    lowered = lowercase(value)
+    if lowered == "true"
+        return "ONLINE"
+    elseif lowered == "false"
+        return "OFFLINE"
+    end
+    throw(
+        IS.DataFormatError(
+            "invalid status_at_start=\"$value\" for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
+function _thermal_status(gen_name::AbstractString, value)
+    throw(
+        IS.DataFormatError(
+            "invalid status_at_start=$value for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
+"""Schema enum values for `commitment_mode` on `ThermalStandard` / `ThermalMultiStart` / `HydroPumpTurbine`."""
+const COMMITMENT_MODE_ENUM_VALUES =
+    ("UNCOMMITTED", "COMMITTED", "SELF_SCHEDULED", "RELIABILITY", "MUST_RUN")
+
+function _commitment_mode(gen_name::AbstractString, value::Bool)
+    if value
+        return "MUST_RUN"
+    end
+    return "COMMITTED"
+end
+
+function _commitment_mode(gen_name::AbstractString, value::Integer)
+    if isone(value)
+        return "MUST_RUN"
+    elseif iszero(value)
+        return "COMMITTED"
+    end
+    throw(
+        IS.DataFormatError(
+            "invalid must_run=$value for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
+function _commitment_mode(gen_name::AbstractString, value::AbstractString)
+    upper = uppercase(value)
+    if upper in COMMITMENT_MODE_ENUM_VALUES
+        return upper
+    end
+    lowered = lowercase(value)
+    if lowered == "true"
+        return "MUST_RUN"
+    elseif lowered == "false"
+        return "COMMITTED"
+    end
+    throw(
+        IS.DataFormatError(
+            "invalid must_run=\"$value\" for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
+function _commitment_mode(gen_name::AbstractString, value)
+    throw(
+        IS.DataFormatError(
+            "invalid must_run=$value for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
 function make_thermal_generator(
     sys::OpenAPISystem,
     data::PowerSystemTableData,
@@ -208,7 +307,7 @@ function make_thermal_generator(
     set_value!(component, :id, register!(get_registry(sys), "ThermalStandard", gen.name))
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
-    set_value!(component, :status, gen.status_at_start)
+    set_value!(component, :status, _thermal_status(gen.name, gen.status_at_start))
     set_value!(component, :bus, bus_id)
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
@@ -233,7 +332,7 @@ function make_thermal_generator(
         make_thermal_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
     )
     set_value!(component, :base_power, device_base_power(sys, gen), "MVA")
-    set_value!(component, :must_run, _as_bool(gen.must_run))
+    set_value!(component, :commitment_mode, _commitment_mode(gen.name, gen.must_run))
     set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :fuel, thermal_fuel(gen.fuel))
     return component
@@ -567,18 +666,6 @@ function make_storage(
     set_value!(component, :base_power, row.base_power, "MVA")
     set_value!(component, :operation_cost, PC.StorageCost(; start_up = 0.0))
     return component
-end
-
-function _as_bool(value::Bool)
-    return value
-end
-
-function _as_bool(value::Nothing)
-    return false
-end
-
-function _as_bool(value::AbstractString)
-    return parse(Bool, lowercase(value))
 end
 
 function _make_generator(::Val{T}, sys, data, gen, bus_id, storage, cols) where {T}
