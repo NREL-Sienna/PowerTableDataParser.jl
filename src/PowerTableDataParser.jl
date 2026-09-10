@@ -25,6 +25,8 @@ const IS = InfrastructureSystems
 import InfrastructureSystems:
     DataFormatError
 
+import OpenAPI.Runtime: Absent, ABSENT
+
 import InfrastructureCoreOpenAPIModels
 import PowerCoreOpenAPIModels
 import PowerOperationsOpenAPIModels

@@ -1,57 +1,165 @@
 """
 Unit-checked assignment onto generated OpenAPI components.
 
-Components are built empty and populated one property at a time. Every numeric
-assignment names the unit of the incoming value; the declared unit comes from the schema
-annotations generated into PowerOpenAPIModels.
+Generated component types are immutable `Base.@kwdef struct`s with no common supertype, so a
+builder cannot allocate one empty and mutate it field by field the way the pre-1.0 OpenAPI.jl
+runtime allowed. [`stage`](@ref) opens a mutable scratch dict typed to the target type instead;
+`set_value!`/`get_value` read and write that dict, resolving unit and compound-type
+information from `fieldtype` and the generated unit metadata; [`materialize`](@ref) (called
+from `add_component!`/`add_supplemental_attribute!` in `container.jl`) builds the real
+immutable struct once, from every field accumulated so far.
 
-The two arities are the enforcement. A property that declares a unit can only be
-written by the 4-argument form, and one that does not can only be written by the
+The two `set_value!` arities are the enforcement, as before: a property that declares a unit
+can only be written by the 4-argument form, and one that does not can only be written by the
 3-argument form, so the check cannot be skipped by choosing the shorter call.
-
-Assignment goes through `setproperty!` rather than `setfield!`, which runs the
-generated `validate_property` and so keeps enum and range checks in force.
 """
 
 """
-Constructor for a compound property, e.g. `MinMax` for `ACBus.voltage_limits`.
+Mutable staging for a to-be-immutable OpenAPI model type `T`.
 
-Generated property types are `Union{Nothing, T}`; drop the `Nothing` arm.
+`stage(T)` opens one of these with an empty field dict; `set_value!`/`get_value` accumulate
+into it; `materialize` builds the real `T` in one kwarg call once every field the caller means
+to set has been staged. Fields are stored already coerced to the exact concrete type `T`
+declares (see [`_coerce`](@ref)), so materialization is a plain, conversion-free
+`T(; fields...)`.
 """
-function _compound_type(o::OpenAPI.APIModel, prop::Symbol)
-    ftype = OpenAPI.property_type(typeof(o), prop)
-    concrete = filter(t -> t !== Nothing, Base.uniontypes(ftype))
+struct Staged{T}
+    fields::Dict{Symbol, Any}
+end
+
+"""Open a staging area for `T`. Replaces the old empty-construct `T()`."""
+stage(::Type{T}) where {T} = Staged{T}(Dict{Symbol, Any}())
+
+"""Build the real, immutable `T` from every field staged so far."""
+materialize(s::Staged{T}) where {T} = T(; s.fields...)
+
+"""
+A value already of the target type is a no-op; otherwise call the target type's own
+constructor on it.
+
+This is how a raw `String` such as `"ONLINE"` becomes the validating enum wrapper a
+generated field actually declares (`ThermalStandardStatus`, `UnitSystem`, ...): there is no
+generic `convert` fallback for these types, and assignment must run the same validation the
+old mutable `setproperty!` path did.
+"""
+_coerce(::Type{T}, value::T) where {T} = value
+_coerce(::Type{T}, value) where {T} = T(value)
+
+"""Whether `Absent` is one of `u`'s member types."""
+_has_absent(u::Union) = Absent in Base.uniontypes(u)
+_has_absent(::Type) = false
+
+"""The member types of `t`; a non-`Union` type is its own sole member."""
+_concrete_types(u::Union) = Base.uniontypes(u)
+_concrete_types(t::Type) = (t,)
+
+"""
+The single concrete type a field can actually hold, with the `Absent`/`Nothing` arms the
+generator adds to every optional field stripped off.
+
+Used both to build a compound value (`MinMax`, `UpDown`, `FromTo`, ...) and to know what
+[`_coerce`](@ref) should convert a plain value into.
+"""
+function _concrete_field_type(::Type{T}, prop::Symbol) where {T}
+    ftype = fieldtype(T, prop)
+    concrete = filter(t -> t !== Nothing && t !== Absent, collect(_concrete_types(ftype)))
     if length(concrete) != 1
         throw(
             IS.DataFormatError(
-                "$(nameof(typeof(o))).$prop is not a single compound type: $ftype",
+                "$(nameof(T)).$prop is not a single concrete type: $ftype",
             ),
         )
     end
     return only(concrete)
 end
 
+"""A placeholder value for a required field this object has not staged yet.
+
+Only used to complete a [`_shadow`](@ref) instance so the generated per-instance
+`declared_unit`/`declared_quantity` methods have something to dispatch on; the discriminated
+field they actually read is always staged first (by convention, before its dependent
+fields), so a placeholder is never the value such a method consults.
 """
-A power-bearing component's own `power_units` governs the declared unit of every
-power-family field on it (schema instance dispatch), so it must hold a real value before
-any such field is assigned — but a freshly constructed component has it unset, and every
-reader in this package always writes `"MW"`/`"MVAr"`-labeled values regardless of the
-run's actual convention, relying on `per_unit`-aware callers (`iterate_rows`,
-`get_cost_pairs`, ...) to have already computed the right number (`add_component!`
-restamps `power_units` to the run's actual convention once the component is complete).
-Default it to `"NATURAL_UNITS"` here, the first time it is needed, rather than requiring
-every construction site to stamp it.
+_placeholder(::Type{T}) where {T <: Integer} = zero(T)
+_placeholder(::Type{T}) where {T <: AbstractFloat} = zero(T)
+_placeholder(::Type{Bool}) = false
+_placeholder(::Type{String}) = ""
+_placeholder(::Type{Dict{K, V}}) where {K, V} = Dict{K, V}()
+_placeholder(::Type{Vector{T}}) where {T} = T[]
+
 """
-function _default_power_units!(o::OpenAPI.APIModel)
-    T = typeof(o)
-    if hasfield(T, :power_units) && getproperty(o, :power_units) === nothing
-        setproperty!(o, :power_units, "NATURAL_UNITS")
+Recursive fallback: a required compound "shape" type (`MinMax`, `UpDown`, `FromTo`, ...) is
+plain numbers with no validation, so a zeroed instance is always constructible. A required
+field with no such shape and no case above (an enum wrapper, say) means a caller staged a
+discriminated numeric field before the enum field its shadow needs — a genuine ordering bug,
+so this fails loudly rather than guessing a value.
+"""
+function _placeholder(::Type{T}) where {T}
+    kwargs = Dict{Symbol, Any}()
+    for name in fieldnames(T)
+        name === :additional_properties && continue
+        ftype = fieldtype(T, name)
+        _has_absent(ftype) && continue
+        kwargs[name] = _placeholder(_concrete_field_type(T, name))
+    end
+    return T(; kwargs...)
+end
+
+"""
+A throw-away, fully valid `T` built from this object's fields staged so far, standing in for
+the real (not-yet-complete) component so the generated per-instance `declared_unit`/
+`declared_quantity` methods — which resolve a discriminated field's unit by reading a sibling
+basis field via `getproperty` — have a real `T` to dispatch on. Every field not yet staged
+gets a [`_placeholder`](@ref).
+"""
+function _shadow(s::Staged{T}) where {T}
+    kwargs = Dict{Symbol, Any}()
+    for name in fieldnames(T)
+        name === :additional_properties && continue
+        if haskey(s.fields, name)
+            kwargs[name] = s.fields[name]
+        else
+            ftype = fieldtype(T, name)
+            _has_absent(ftype) && continue
+            kwargs[name] = _placeholder(_concrete_field_type(T, name))
+        end
+    end
+    return T(; kwargs...)
+end
+
+"""
+Basis-selector fields this package leaves optional, defaulted the first time a
+declared-unit lookup needs one — mirroring `add_component!`'s later restamp of `power_units`
+to the run's real convention. The default per field matches the literal source-unit label
+every reader in this package already passes for that field's dependents: `power_units`
+defaults to `"NATURAL_UNITS"` because readers always pass natural-unit labels (`"MW"`, ...);
+`parameter_units` and `admittance_units` default to `"COMPONENT_BASE"` because the impedance
+and admittance columns readers pass are always already per unit (`"pu"`); `energy_units`
+(which names the energy unit directly, `"MWH"`/`"MWMIN"`, rather than choosing a natural-vs-
+per-unit basis) defaults to `"MWH"` because readers always pass `"MWh"`.
+"""
+const _DEFAULT_BASIS = Dict{Symbol, String}(
+    :power_units => "NATURAL_UNITS",
+    :energy_units => "MWH",
+    :parameter_units => "COMPONENT_BASE",
+    :admittance_units => "COMPONENT_BASE",
+)
+
+function _default_bases!(s::Staged{T}) where {T}
+    for (name, default) in _DEFAULT_BASIS
+        if hasfield(T, name) && !haskey(s.fields, name)
+            s.fields[name] = _coerce(_concrete_field_type(T, name), default)
+        end
     end
     return
 end
 
-function _declared(o::OpenAPI.APIModel, prop::Symbol)
-    T = typeof(o)
+"""
+Constructor for a compound property, e.g. `MinMax` for `ACBus.voltage_limits`.
+"""
+_compound_type(::Type{T}, prop::Symbol) where {T} = _concrete_field_type(T, prop)
+
+function _declared(s::Staged{T}, prop::Symbol) where {T}
     if !IC.has_declared_unit(T, Val(prop))
         throw(
             IS.DataFormatError(
@@ -59,16 +167,24 @@ function _declared(o::OpenAPI.APIModel, prop::Symbol)
             ),
         )
     end
-    _default_power_units!(o)
-    # Instance dispatch: for discriminated properties both the unit and the
-    # quantity depend on a sibling field.
-    return IC.declared_unit(o, Val(prop)), IC.declared_quantity(o, Val(prop))
+    # Most properties declare a fixed unit resolvable from the type alone; only a
+    # discriminated one needs an instance (a shadow stands in for the real, incomplete
+    # object) to read the sibling basis field its unit depends on. Trying the type-level
+    # form first avoids building a shadow — and the required-field placeholders that would
+    # need — for the common, non-discriminated case.
+    try
+        return IC.declared_unit(T, Val(prop)), IC.declared_quantity(T, Val(prop))
+    catch e
+        e isa ErrorException || rethrow()
+    end
+    _default_bases!(s)
+    shadow = _shadow(s)
+    return IC.declared_unit(shadow, Val(prop)), IC.declared_quantity(shadow, Val(prop))
 end
 
-function _reject_declared(o::OpenAPI.APIModel, prop::Symbol)
-    T = typeof(o)
+function _reject_declared(::Type{T}, prop::Symbol) where {T}
     if IC.has_declared_unit(T, Val(prop))
-        unit = IC.declared_unit(o, Val(prop))
+        unit = declared_unit_label(T, prop)
         throw(
             IS.DataFormatError(
                 "$(nameof(T)).$prop declares unit \"$unit\"; use the 4-argument set_value!",
@@ -78,18 +194,27 @@ function _reject_declared(o::OpenAPI.APIModel, prop::Symbol)
     return
 end
 
+"""Best-effort unit label for an error message; falls back to `"?"` when it takes an
+instance (a discriminated property) to resolve, which an error path should not build."""
+function declared_unit_label(::Type{T}, prop::Symbol) where {T}
+    return try
+        IC.declared_unit(T, Val(prop))
+    catch
+        "?"
+    end
+end
+
 function _convert(
-    o::OpenAPI.APIModel,
+    ::Type{T},
     prop::Symbol,
     value::Float64,
     source_unit::AbstractString,
     target::AbstractString,
     quantity::AbstractString,
-)
+) where {T}
     if source_unit == target
         return value
     end
-    T = typeof(o)
     if !IC.has_conversion_factor(quantity, source_unit)
         throw(
             IS.DataFormatError(
@@ -112,93 +237,99 @@ end
 
 """Convert `value` from `source_unit` into the unit `prop` declares."""
 function convert_to_declared(
-    o::OpenAPI.APIModel,
+    s::Staged{T},
     prop::Symbol,
     value::Real,
     source_unit::AbstractString,
-)
-    target, quantity = _declared(o, prop)
-    return _convert(o, prop, Float64(value), source_unit, target, quantity)
+) where {T}
+    target, quantity = _declared(s, prop)
+    return _convert(T, prop, Float64(value), source_unit, target, quantity)
 end
 
 """Assign a numeric property, converting from `source_unit` to the declared unit."""
 function set_value!(
-    o::OpenAPI.APIModel,
+    s::Staged{T},
     prop::Symbol,
     value::Real,
     source_unit::AbstractString,
-)
-    setproperty!(o, prop, convert_to_declared(o, prop, value, source_unit))
+) where {T}
+    converted = convert_to_declared(s, prop, value, source_unit)
+    s.fields[prop] = _coerce(_concrete_field_type(T, prop), converted)
     return
 end
 
 """
 Assign a compound property such as `MinMax`, `UpDown`, `FromTo` or `InOut`.
 
-The schemas annotate these at the object level rather than per member, so one
-unit applies to every field of the tuple.
+The schemas annotate these at the object level rather than per member, so one unit applies to
+every field of the tuple.
 """
 function set_value!(
-    o::OpenAPI.APIModel,
+    s::Staged{T},
     prop::Symbol,
     value::NamedTuple,
     source_unit::AbstractString,
-)
-    target, quantity = _declared(o, prop)
+) where {T}
+    target, quantity = _declared(s, prop)
     converted = map(
-        v -> _convert(o, prop, Float64(v), source_unit, target, quantity),
+        v -> _convert(T, prop, Float64(v), source_unit, target, quantity),
         values(value),
     )
-    ctor = _compound_type(o, prop)
-    setproperty!(o, prop, ctor(; NamedTuple{keys(value)}(converted)...))
+    ctor = _compound_type(T, prop)
+    s.fields[prop] = ctor(; NamedTuple{keys(value)}(converted)...)
     return
 end
 
 """
 Reject a unit supplied for something that cannot carry one.
 
-Either the property declares no unit, or the value is neither a number nor a
-compound tuple. Both are caller mistakes worth naming precisely rather than
-surfacing as a MethodError.
+Either the property declares no unit, or the value is neither a number nor a compound tuple.
+Both are caller mistakes worth naming precisely rather than surfacing as a MethodError.
 """
 function set_value!(
-    o::OpenAPI.APIModel,
+    s::Staged{T},
     prop::Symbol,
     value,
     source_unit::AbstractString,
-)
-    _reject_declared(o, prop)
+) where {T}
+    _reject_declared(T, prop)
     throw(
         IS.DataFormatError(
-            "$(nameof(typeof(o))).$prop: a unit applies only to a number or a compound " *
+            "$(nameof(T)).$prop: a unit applies only to a number or a compound " *
             "tuple, got $(typeof(value))",
         ),
     )
 end
 
 """Assign a property that declares no unit: names, ids, flags, enum strings."""
-function set_value!(o::OpenAPI.APIModel, prop::Symbol, value)
-    _reject_declared(o, prop)
-    setproperty!(o, prop, value)
+function set_value!(s::Staged{T}, prop::Symbol, value) where {T}
+    _reject_declared(T, prop)
+    s.fields[prop] = _coerce(_concrete_field_type(T, prop), value)
     return
 end
 
-"""Return the stored value of `prop`."""
-get_value(o::OpenAPI.APIModel, prop::Symbol) = getproperty(o, prop)
+"""Return the staged value of `prop`."""
+get_value(s::Staged, prop::Symbol) = s.fields[prop]
+
+"""Return the stored value of `prop` on an already-materialized component."""
+get_value(o, prop::Symbol) = getproperty(o, prop)
+
+_declared_read(s::Staged, prop::Symbol) = _declared(s, prop)
+_declared_read(o::T, prop::Symbol) where {T} =
+    (IC.declared_unit(o, Val(prop)), IC.declared_quantity(o, Val(prop)))
 
 """Return the value of `prop` expressed in `unit`."""
-function get_value(o::OpenAPI.APIModel, prop::Symbol, unit::AbstractString)
-    source, quantity = _declared(o, prop)
-    value = getproperty(o, prop)
+function get_value(o, prop::Symbol, unit::AbstractString)
+    source, quantity = _declared_read(o, prop)
+    value = get_value(o, prop)
     if source == unit
         return value
     end
-    T = typeof(o)
     if !IC.has_conversion_factor(quantity, unit) ||
        !IC.has_conversion_factor(quantity, source)
         throw(
             IS.DataFormatError(
-                "$(nameof(T)).$prop is $quantity in \"$source\"; cannot express in \"$unit\"",
+                "$prop is $quantity in \"$source\"; cannot express in \"$unit\"",
             ),
         )
     end

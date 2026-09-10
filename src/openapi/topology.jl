@@ -38,7 +38,7 @@ function loadzone_csv_parser!(sys::OpenAPISystem, data::PowerSystemTableData)
     peaks = _peak_loads(sys, data, _zone_name)
     for zone in sort!(collect(keys(peaks)))
         active, reactive = peaks[zone]
-        component = PO.LoadZone()
+        component = stage(PC.LoadZone)
         set_value!(component, :id, register!(reg, "LoadZone", zone))
         set_value!(component, :name, zone)
         set_value!(component, :peak_active_power, active, "MW")
@@ -62,7 +62,7 @@ function _ensure_area!(sys::OpenAPISystem, name::AbstractString, peaks)
         return get_id(reg, "Area", name)
     end
     active, reactive = get(peaks, name, (0.0, 0.0))
-    area = PO.Area()
+    area = stage(PC.Area)
     id = register!(reg, "Area", name)
     set_value!(area, :id, id)
     set_value!(area, :name, name)
@@ -96,18 +96,26 @@ function _add_fixed_admittance!(sys::OpenAPISystem, reg, bus, bus_id::Int, per_u
     if per_unit
         scale = get_base_power(sys)
     end
-    shunt = PO.FixedAdmittance()
+    shunt = stage(PO.FixedAdmittance)
     set_value!(shunt, :id, register!(reg, "FixedAdmittance", bus.name))
     set_value!(shunt, :name, bus.name)
     set_value!(shunt, :available, true)
     set_value!(shunt, :bus, bus_id)
     set_value!(shunt, :admittance_units, "COMPONENT_MVAR")
+    # UPSTREAM BUG (PowerOpenAPIModels/PowerOperationsOpenAPIModels units.jl): `y`'s unit
+    # metadata is registered under `Val(:Y)`, but the generated `FixedAdmittance` struct
+    # field is lowercase `y`, so `has_declared_unit(FixedAdmittance, Val(:y))` — the real
+    # field name — returns false and the 4-argument set_value! cannot find it. Falling back
+    # to the unitless form here; the value is already MVAr-equivalent for
+    # `admittance_units = "COMPONENT_MVAR"`, exactly what the unit-checked path would have
+    # produced, so this reproduces the same number pending the upstream casing fix.
     set_value!(
         shunt,
-        :Y,
-        (real = bus.shunt_g * scale, imag = bus.shunt_b * scale),
-        "MVAr",
+        :y,
+        IC.ComplexNumber(; real = bus.shunt_g * scale, imag = bus.shunt_b * scale),
     )
+    # No device base of its own: base_power records the system base.
+    set_value!(shunt, :base_power, get_base_power(sys), "MVA")
     add_component!(sys, shunt)
     return
 end
@@ -131,7 +139,7 @@ function bus_csv_parser!(sys::OpenAPISystem, data::PowerSystemTableData)
             number = ix
         end
 
-        ps_bus = PO.ACBus()
+        ps_bus = stage(PC.ACBus)
         set_value!(ps_bus, :id, register_bus!(reg, Int(number), bus.name))
         set_value!(ps_bus, :number, Int(number))
         set_value!(ps_bus, :name, bus.name)
@@ -152,7 +160,7 @@ function bus_csv_parser!(sys::OpenAPISystem, data::PowerSystemTableData)
         add_component!(sys, ps_bus)
 
         if !iszero(bus.max_active_power) || !iszero(bus.max_reactive_power)
-            load = PO.PowerLoad()
+            load = stage(PO.PowerLoad)
             set_value!(load, :id, register!(reg, "PowerLoad", bus.name))
             set_value!(load, :name, bus.name)
             set_value!(load, :available, true)

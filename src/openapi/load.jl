@@ -21,7 +21,7 @@ function load_csv_parser!(sys::OpenAPISystem, data::PowerSystemTableData)
         bus_id = get_bus_id(reg, Int(row.bus_id))
         name = _load_name(reg, row.name)
 
-        load = PO.PowerLoad()
+        load = stage(PO.PowerLoad)
         set_value!(load, :id, register!(reg, "PowerLoad", name))
         set_value!(load, :name, name)
         set_value!(load, :available, row.available)

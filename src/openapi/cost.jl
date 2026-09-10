@@ -109,19 +109,27 @@ end
 """A `LinearFunctionData` wrapped as an input-output value curve."""
 function linear_curve(proportional_term::Float64, constant_term::Float64 = 0.0)
     return PC.InputOutputCurve(;
-        function_data = IC.LinearFunctionData(;
-            proportional_term = proportional_term,
-            constant_term = constant_term,
+        curve_type = "INPUT_OUTPUT",
+        function_data = PC.InputOutputCurveFunctionData(
+            IC.LinearFunctionData(;
+                function_type = "LINEAR",
+                proportional_term = proportional_term,
+                constant_term = constant_term,
+            ),
         ),
     )
 end
 
 function quadratic_curve(quadratic_term, proportional_term, constant_term)
     return PC.InputOutputCurve(;
-        function_data = IC.QuadraticFunctionData(;
-            quadratic_term = quadratic_term,
-            proportional_term = proportional_term,
-            constant_term = constant_term,
+        curve_type = "INPUT_OUTPUT",
+        function_data = PC.InputOutputCurveFunctionData(
+            IC.QuadraticFunctionData(;
+                function_type = "QUADRATIC",
+                quadratic_term = quadratic_term,
+                proportional_term = proportional_term,
+                constant_term = constant_term,
+            ),
         ),
     )
 end
@@ -129,7 +137,7 @@ end
 """The piecewise input-output data for a set of cost points."""
 function create_pwl_cost(cost_pairs)
     points = [IC.XYCoords(; x = first(p), y = last(p)) for p in cost_pairs]
-    return IC.PiecewiseLinearData(; points = points)
+    return IC.PiecewiseLinearData(; function_type = "PIECEWISE_LINEAR", points = points)
 end
 
 """
@@ -140,6 +148,7 @@ initial input, so only the remaining y values are slopes.
 """
 function create_pwinc_cost(cost_pairs)
     return IC.PiecewiseStepData(;
+        function_type = "PIECEWISE_STEP",
         x_coords = [first(p) for p in cost_pairs],
         y_coords = [last(p) for p in cost_pairs[2:end]],
     )
@@ -185,7 +194,10 @@ end
 """Value curve for a piecewise input-output cost, with fallbacks for a short series."""
 function _pwl_value_curve(gen::NamedTuple, cost_pairs)
     if length(cost_pairs) > 1
-        return PC.InputOutputCurve(; function_data = create_pwl_cost(cost_pairs))
+        return PC.InputOutputCurve(;
+            curve_type = "INPUT_OUTPUT",
+            function_data = PC.InputOutputCurveFunctionData(create_pwl_cost(cost_pairs)),
+        )
     end
     if length(cost_pairs) == 1
         # A single point fixes a constant rate per MW.
@@ -200,8 +212,9 @@ function _pwinc_value_curve(gen::NamedTuple, cost_pairs)
     if length(cost_pairs) > 1
         first_pair = first(cost_pairs)
         return PC.IncrementalCurve(;
+            curve_type = "INCREMENTAL",
             initial_input = last(first_pair) * first(first_pair),
-            function_data = create_pwinc_cost(cost_pairs),
+            function_data = PC.IncrementalCurveFunctionData(create_pwinc_cost(cost_pairs)),
         )
     end
     if length(cost_pairs) == 1
@@ -282,14 +295,17 @@ function make_thermal_cost(
     end
     start_up, shut_down = calculate_uc_cost(gen, price)
     return PC.ThermalGenerationCost(;
-        variable_operation_cost = PC.FuelCurve(;
-            value_curve = value_curve,
-            power_units = "NATURAL_UNITS",
-            fuel_cost = price,
-            vom_cost = _vom_curve(gen),
+        variable_operation_cost = PC.ProductionVariableCostCurve(
+            PC.FuelCurve(;
+                value_curve = PC.ValueCurve(value_curve),
+                power_units = IC.UnitSystem("NATURAL_UNITS"),
+                variable_cost_type = "FUEL",
+                fuel_cost = price,
+                vom_cost = _vom_curve(gen),
+            ),
         ),
         fixed = fixed * price,
-        start_up = start_up,
+        start_up = _coerce(PC.ThermalGenerationCostStartUp, start_up),
         shut_down = shut_down,
     )
 end
@@ -304,16 +320,18 @@ function make_thermal_cost(
     price = fuel_price(gen)
     start_up, shut_down = calculate_uc_cost(gen, price)
     return PC.ThermalGenerationCost(;
-        variable_operation_cost = PC.CostCurve(;
-            value_curve = _pwl_value_curve(
-                gen,
-                get_cost_pairs(gen, cols; per_unit = per_unit),
+        variable_operation_cost = PC.ProductionVariableCostCurve(
+            PC.CostCurve(;
+                value_curve = PC.ValueCurve(
+                    _pwl_value_curve(gen, get_cost_pairs(gen, cols; per_unit = per_unit)),
+                ),
+                power_units = IC.UnitSystem("NATURAL_UNITS"),
+                variable_cost_type = "COST",
+                vom_cost = _vom_curve(gen),
             ),
-            power_units = "NATURAL_UNITS",
-            vom_cost = _vom_curve(gen),
         ),
         fixed = _fixed_cost(gen),
-        start_up = start_up,
+        start_up = _coerce(PC.ThermalGenerationCostStartUp, start_up),
         shut_down = shut_down,
     )
 end
@@ -334,14 +352,16 @@ function make_hydro_cost(
 )
     price = fuel_price(gen)
     return PC.HydroGenerationCost(;
-        variable_operation_cost = PC.FuelCurve(;
-            value_curve = _pwinc_value_curve(
-                gen,
-                get_cost_pairs(gen, cols; per_unit = per_unit),
+        variable_operation_cost = PC.ProductionVariableCostCurve(
+            PC.FuelCurve(;
+                value_curve = PC.ValueCurve(
+                    _pwinc_value_curve(gen, get_cost_pairs(gen, cols; per_unit = per_unit)),
+                ),
+                power_units = IC.UnitSystem("NATURAL_UNITS"),
+                variable_cost_type = "FUEL",
+                fuel_cost = price,
+                vom_cost = _vom_curve(gen),
             ),
-            power_units = "NATURAL_UNITS",
-            fuel_cost = price,
-            vom_cost = _vom_curve(gen),
         ),
         fixed = 0.0,
     )
@@ -354,13 +374,15 @@ function make_hydro_cost(
     per_unit::Bool = false,
 )
     return PC.HydroGenerationCost(;
-        variable_operation_cost = PC.CostCurve(;
-            value_curve = _pwl_value_curve(
-                gen,
-                get_cost_pairs(gen, cols; per_unit = per_unit),
+        variable_operation_cost = PC.ProductionVariableCostCurve(
+            PC.CostCurve(;
+                value_curve = PC.ValueCurve(
+                    _pwl_value_curve(gen, get_cost_pairs(gen, cols; per_unit = per_unit)),
+                ),
+                power_units = IC.UnitSystem("NATURAL_UNITS"),
+                variable_cost_type = "COST",
+                vom_cost = _vom_curve(gen),
             ),
-            power_units = "NATURAL_UNITS",
-            vom_cost = _vom_curve(gen),
         ),
         fixed = _fixed_cost(gen),
     )
@@ -390,8 +412,9 @@ function make_renewable_cost(
         5
     return PC.RenewableGenerationCost(;
         variable_operation_cost = PC.CostCurve(;
-            value_curve = linear_curve(0.0),
-            power_units = "NATURAL_UNITS",
+            value_curve = PC.ValueCurve(linear_curve(0.0)),
+            power_units = IC.UnitSystem("NATURAL_UNITS"),
+            variable_cost_type = "COST",
             vom_cost = _vom_curve(gen),
         ),
     )
@@ -405,11 +428,11 @@ function make_renewable_cost(
 )
     return PC.RenewableGenerationCost(;
         variable_operation_cost = PC.CostCurve(;
-            value_curve = _pwl_value_curve(
-                gen,
-                get_cost_pairs(gen, cols; per_unit = per_unit),
+            value_curve = PC.ValueCurve(
+                _pwl_value_curve(gen, get_cost_pairs(gen, cols; per_unit = per_unit)),
             ),
-            power_units = "NATURAL_UNITS",
+            power_units = IC.UnitSystem("NATURAL_UNITS"),
+            variable_cost_type = "COST",
             vom_cost = _vom_curve(gen),
         ),
     )
