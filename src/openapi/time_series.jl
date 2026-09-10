@@ -48,11 +48,11 @@ The unit system values are stored in when a pointer declared a multiplier.
 
 Such a pointer stores its values normalized against the owner's corresponding base quantity
 (e.g. its max active power for a `max_active_power` series), which is exactly what
-`DeviceBaseUnit` declares.
+`ComponentBaseUnit` declares.
 
 `units` is for a units label ("MW"); a per-unit basis is not one.
 """
-const DEVICE_BASE_UNIT_SYSTEM = IS.DU
+const COMPONENT_BASE_UNIT_SYSTEM = IS.CU
 
 """
 The physical quantity a normalized pointer's values scale to, for the series'
@@ -261,7 +261,7 @@ function _series_unit_system(multiplier::Union{Nothing, AbstractString})
     if isnothing(multiplier)
         return nothing
     end
-    return DEVICE_BASE_UNIT_SYSTEM
+    return COMPONENT_BASE_UNIT_SYSTEM
 end
 
 _series_unit_system(entry::TimeSeriesPointer) =
