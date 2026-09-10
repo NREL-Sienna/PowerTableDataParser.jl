@@ -34,14 +34,17 @@ decided downstream from time series presence. The table's `timeframe` is in seco
 while the schema declares `time_frame` in minutes, so the conversion runs on the way in.
 """
 function _add_reserve!(sys::OpenAPISystem, reserve)
-    component = PO.OnlineReserve()
+    component = stage(PO.OnlineReserve)
     service_id = register!(get_registry(sys), "OnlineReserve", reserve.name)
     set_value!(component, :id, service_id)
     set_value!(component, :name, reserve.name)
     set_value!(component, :available, true)
+    # Staged before any power-family field: `reserve_direction` is required and has no
+    # generic placeholder a shadow instance could stand in with, so it must already be
+    # staged by the time a discriminated sibling field's declared unit is resolved.
+    set_value!(component, :reserve_direction, get_reserve_direction(reserve.direction))
     set_value!(component, :time_frame, _seconds_to_minutes(reserve.timeframe), "min")
     set_value!(component, :requirement, get(reserve, :requirement, 0.0), "MW")
-    set_value!(component, :reserve_direction, get_reserve_direction(reserve.direction))
     add_component!(sys, component)
     return service_id
 end

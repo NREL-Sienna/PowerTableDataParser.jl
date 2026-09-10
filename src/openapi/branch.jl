@@ -31,7 +31,7 @@ Parallel circuits share one arc: RTS has 12 bus pairs carrying two branches each
 function _add_arc!(sys::OpenAPISystem, from_id::Int, to_id::Int)
     id, created = arc_id!(get_registry(sys), from_id, to_id)
     if created
-        arc = PO.Arc()
+        arc = stage(PC.Arc)
         set_value!(arc, :id, id)
         set_value!(arc, :from_id, from_id)
         set_value!(arc, :to_id, to_id)
@@ -69,7 +69,7 @@ function _set_optional!(component, prop::Symbol, value, unit::AbstractString)
 end
 
 function _add_line!(sys::OpenAPISystem, branch, arc::Int)
-    line = PO.Line()
+    line = stage(PO.Line)
     set_value!(line, :id, register!(get_registry(sys), "Line", branch.name))
     set_value!(line, :name, branch.name)
     set_value!(line, :available, true)
@@ -99,7 +99,7 @@ end
 
 function _add_transformer!(sys::OpenAPISystem, branch, arc::Int, from_kv, to_kv)
     reg = get_registry(sys)
-    circuit = PO.TransformerCircuit()
+    circuit = stage(PO.TransformerCircuit)
     set_value!(circuit, :id, next_id!(reg))
     set_value!(circuit, :available, true)
     set_value!(circuit, :arc, arc)
@@ -123,7 +123,7 @@ function _add_transformer!(sys::OpenAPISystem, branch, arc::Int, from_kv, to_kv)
     set_value!(circuit, :base_voltage_secondary, to_kv, "kV")
     add_component!(sys, circuit)
 
-    xfmr = PO.TwoWindingTransformer()
+    xfmr = stage(PO.TwoWindingTransformer)
     set_value!(xfmr, :id, register!(reg, "TwoWindingTransformer", branch.name))
     set_value!(xfmr, :name, branch.name)
     set_value!(xfmr, :circuit, get_value(circuit, :id))
