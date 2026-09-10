@@ -65,7 +65,7 @@ end
     # series stores normalized values tagged with the device-base units label
     # in place of the removed multiplier metadata.
     @test all(
-        IS.get_unit_system(row.series) == PDP.DEVICE_BASE_UNIT_SYSTEM
+        IS.get_unit_system(row.series) == PDP.COMPONENT_BASE_UNIT_SYSTEM
         for row in sys.time_series
     )
     zone_rows = [r for r in sys.time_series if r.owner_type == "LoadZone"]
@@ -80,7 +80,7 @@ end
     # Every RTS pointer declares a multiplier, so every series is per unit on its owner's
     # own base. `units` stays unset: a per-unit basis is not a units label.
     for row in sys.time_series
-        @test IS.get_unit_system(row.series) == PDP.DEVICE_BASE_UNIT_SYSTEM
+        @test IS.get_unit_system(row.series) == PDP.COMPONENT_BASE_UNIT_SYSTEM
         @test isnothing(IS.get_units(row.series))
         @test !isnothing(IS.get_quantity_kind(row.series))
     end
@@ -189,7 +189,7 @@ end
     @test length(reserve_rows) == 12
     @test all(r -> IS.get_name(r.series) == "requirement", reserve_rows)
     @test all(
-        r -> IS.get_unit_system(r.series) == PDP.DEVICE_BASE_UNIT_SYSTEM,
+        r -> IS.get_unit_system(r.series) == PDP.COMPONENT_BASE_UNIT_SYSTEM,
         reserve_rows,
     )
 end

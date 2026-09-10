@@ -179,7 +179,7 @@ _ts_values(component, name) =
         shape = _ZONE_VALUES ./ 200.0
         @test _ts_values(zone, "max_active_power") ≈ shape
         zone_ts = PSY.get_time_series(PSY.SingleTimeSeries, zone, "max_active_power")
-        @test IS.get_unit_system(zone_ts) == IS.DU
+        @test IS.get_unit_system(zone_ts) == IS.CU
         @test IS.get_quantity_kind(zone_ts) == "active_power"
         @test isnothing(IS.get_units(zone_ts))
 
@@ -190,7 +190,7 @@ _ts_values(component, name) =
         for follower in (load3, shunt)
             @test _ts_values(follower, "max_active_power") ≈ shape
             ts = PSY.get_time_series(PSY.SingleTimeSeries, follower, "max_active_power")
-            @test IS.get_unit_system(ts) == IS.DU
+            @test IS.get_unit_system(ts) == IS.CU
             @test IS.get_quantity_kind(ts) == "active_power"
         end
         @test _ts_values(load1, "max_active_power") ≈ _DIRECT_VALUES
