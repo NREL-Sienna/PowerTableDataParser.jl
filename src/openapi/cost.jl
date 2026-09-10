@@ -295,6 +295,7 @@ function make_thermal_cost(
     end
     start_up, shut_down = calculate_uc_cost(gen, price)
     return PC.ThermalGenerationCost(;
+        cost_type = "THERMAL",
         variable_operation_cost = PC.ProductionVariableCostCurve(
             PC.FuelCurve(;
                 value_curve = PC.ValueCurve(value_curve),
@@ -320,6 +321,7 @@ function make_thermal_cost(
     price = fuel_price(gen)
     start_up, shut_down = calculate_uc_cost(gen, price)
     return PC.ThermalGenerationCost(;
+        cost_type = "THERMAL",
         variable_operation_cost = PC.ProductionVariableCostCurve(
             PC.CostCurve(;
                 value_curve = PC.ValueCurve(
@@ -352,6 +354,7 @@ function make_hydro_cost(
 )
     price = fuel_price(gen)
     return PC.HydroGenerationCost(;
+        cost_type = "HYDRO_GEN",
         variable_operation_cost = PC.ProductionVariableCostCurve(
             PC.FuelCurve(;
                 value_curve = PC.ValueCurve(
@@ -374,6 +377,7 @@ function make_hydro_cost(
     per_unit::Bool = false,
 )
     return PC.HydroGenerationCost(;
+        cost_type = "HYDRO_GEN",
         variable_operation_cost = PC.ProductionVariableCostCurve(
             PC.CostCurve(;
                 value_curve = PC.ValueCurve(
@@ -411,6 +415,7 @@ function make_renewable_cost(
     @warn "Heat rate parsing is not valid for a renewable unit; using a zero cost curve" maxlog =
         5
     return PC.RenewableGenerationCost(;
+        cost_type = "RENEWABLE",
         variable_operation_cost = PC.CostCurve(;
             value_curve = PC.ValueCurve(linear_curve(0.0)),
             power_units = IC.UnitSystem("NATURAL_UNITS"),
@@ -427,6 +432,7 @@ function make_renewable_cost(
     per_unit::Bool = false,
 )
     return PC.RenewableGenerationCost(;
+        cost_type = "RENEWABLE",
         variable_operation_cost = PC.CostCurve(;
             value_curve = PC.ValueCurve(
                 _pwl_value_curve(gen, get_cost_pairs(gen, cols; per_unit = per_unit)),

@@ -7,17 +7,17 @@
     )
     cost = PDP.make_thermal_cost(data, gen)
     @test cost.cost_type == "THERMAL"
-    @test cost.variable_operation_cost.variable_cost_type == "FUEL"
-    @test cost.variable_operation_cost.fuel_cost > 0
+    @test cost.variable_operation_cost.value.variable_cost_type == "FUEL"
+    @test cost.variable_operation_cost.value.fuel_cost > 0
     # $/MMBtu in the table, $/MBtu in the model.
-    @test cost.variable_operation_cost.fuel_cost ≈ gen.fuel_price / 1000.0
-    @test cost.variable_operation_cost.power_units == "NATURAL_UNITS"
+    @test cost.variable_operation_cost.value.fuel_cost ≈ gen.fuel_price / 1000.0
+    @test cost.variable_operation_cost.value.power_units.value == "NATURAL_UNITS"
     # Heat rates give an incremental curve over the output points.
-    @test cost.variable_operation_cost.value_curve.curve_type == "INCREMENTAL"
-    @test cost.variable_operation_cost.value_curve.function_data.function_type ==
+    @test cost.variable_operation_cost.value.value_curve.value.curve_type == "INCREMENTAL"
+    @test cost.variable_operation_cost.value.value_curve.value.function_data.value.function_type ==
           "PIECEWISE_STEP"
-    @test cost.start_up > 0
-    @test PDP.OpenAPI.check_required(cost)
+    @test cost.start_up.value > 0
+    @test required_fields_populated(cost)
 end
 
 @testset "RTS uses the heat-rate columns" begin
@@ -68,13 +68,13 @@ end
 @testset "linear and quadratic curves carry their discriminators" begin
     linear = PDP.linear_curve(3.0, 1.0)
     @test linear.curve_type == "INPUT_OUTPUT"
-    @test linear.function_data.function_type == "LINEAR"
-    @test linear.function_data.proportional_term ≈ 3.0
-    @test linear.function_data.constant_term ≈ 1.0
+    @test linear.function_data.value.function_type == "LINEAR"
+    @test linear.function_data.value.proportional_term ≈ 3.0
+    @test linear.function_data.value.constant_term ≈ 1.0
 
     quad = PDP.quadratic_curve(1.0, 2.0, 3.0)
-    @test quad.function_data.function_type == "QUADRATIC"
-    @test quad.function_data.quadratic_term ≈ 1.0
+    @test quad.function_data.value.function_type == "QUADRATIC"
+    @test quad.function_data.value.quadratic_term ≈ 1.0
 end
 
 @testset "create_poly_cost reads the coefficients it is given" begin
@@ -84,13 +84,13 @@ end
         heat_rate_a1 = 2.0,
         heat_rate_a2 = 3.0,
     )
-    @test PDP.create_poly_cost(base).function_data.function_type == "QUADRATIC"
+    @test PDP.create_poly_cost(base).function_data.value.function_type == "QUADRATIC"
 
     linear = merge(base, (heat_rate_a2 = nothing,))
-    @test PDP.create_poly_cost(linear).function_data.constant_term ≈ 1.0
+    @test PDP.create_poly_cost(linear).function_data.value.constant_term ≈ 1.0
 
     proportional = merge(base, (heat_rate_a2 = nothing, heat_rate_a0 = nothing))
-    @test iszero(PDP.create_poly_cost(proportional).function_data.constant_term)
+    @test iszero(PDP.create_poly_cost(proportional).function_data.value.constant_term)
 
     incomplete = merge(base, (heat_rate_a1 = nothing,))
     @test_throws IS.DataFormatError PDP.create_poly_cost(incomplete)
@@ -106,7 +106,9 @@ end
     cost = PDP.make_renewable_cost(data, gen)
     @test cost.cost_type == "RENEWABLE"
     @test cost.variable_operation_cost.variable_cost_type == "COST"
-    @test iszero(cost.variable_operation_cost.value_curve.function_data.proportional_term)
+    @test iszero(
+        cost.variable_operation_cost.value_curve.value.function_data.value.proportional_term,
+    )
 end
 
 @testset "hydro heat-rate costs are a FuelCurve" begin
@@ -118,6 +120,6 @@ end
     )
     cost = PDP.make_hydro_cost(data, gen)
     @test cost.cost_type == "HYDRO_GEN"
-    @test cost.variable_operation_cost.variable_cost_type == "FUEL"
+    @test cost.variable_operation_cost.value.variable_cost_type == "FUEL"
     @test iszero(cost.fixed)
 end

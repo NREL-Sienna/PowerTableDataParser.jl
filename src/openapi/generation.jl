@@ -385,14 +385,16 @@ function make_renewable_generator(
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
-    # Staged before any power-family field: `operation_cost` is a required, discriminated
-    # (`oneOf`) field with no placeholder a shadow instance could stand in with, so it must
-    # already be staged by the time a sibling field's declared unit is resolved.
+    # Staged before any power-family field: `operation_cost` (oneOf) and `prime_mover_type`
+    # (enum) are both required, discriminated-unit-adjacent fields with no placeholder a
+    # shadow instance could stand in with, so both must already be staged by the time a
+    # sibling field's declared unit is resolved.
     set_value!(
         component,
         :operation_cost,
         make_renewable_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
     )
+    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     set_value!(
@@ -401,7 +403,6 @@ function make_renewable_generator(
         calculate_gen_rating(_active_power_limits(gen), reactive_power_limits),
         "MVA",
     )
-    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     _set_optional!(component, :reactive_power_limits, reactive_power_limits, "MVAr")
     set_value!(component, :power_factor, gen.power_factor, "1")
     set_value!(component, :base_power, device_base_power(sys, gen), "MVA")
@@ -427,6 +428,9 @@ function make_renewable_generator(
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
+    # `prime_mover_type` is a required enum field with no placeholder a shadow instance
+    # could stand in with, so it must be staged before any power-family field below.
+    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     set_value!(
@@ -435,7 +439,6 @@ function make_renewable_generator(
         calculate_gen_rating(_active_power_limits(gen), reactive_power_limits),
         "MVA",
     )
-    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :power_factor, gen.power_factor, "1")
     set_value!(component, :base_power, device_base_power(sys, gen), "MVA")
     return component
@@ -456,14 +459,16 @@ function make_hydro_dispatch(
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
-    # Staged before any power-family field: `operation_cost` is a required, discriminated
-    # (`oneOf`) field with no placeholder a shadow instance could stand in with, so it must
-    # already be staged by the time a sibling field's declared unit is resolved.
+    # Staged before any power-family field: `operation_cost` (oneOf) and `prime_mover_type`
+    # (enum) are both required, discriminated-unit-adjacent fields with no placeholder a
+    # shadow instance could stand in with, so both must already be staged by the time a
+    # sibling field's declared unit is resolved.
     set_value!(
         component,
         :operation_cost,
         make_hydro_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
     )
+    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     set_value!(
@@ -472,7 +477,6 @@ function make_hydro_dispatch(
         calculate_gen_rating(active_power_limits, reactive_power_limits),
         "MVA",
     )
-    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power_limits, active_power_limits, "MW")
     _set_optional!(component, :reactive_power_limits, reactive_power_limits, "MVAr")
     _set_optional!(component, :ramp_limits, make_ramplimits(gen), "MW/min")
@@ -537,6 +541,15 @@ function _add_reservoir!(
     set_value!(reservoir, :id, register!(get_registry(sys), "HydroReservoir", name))
     set_value!(reservoir, :name, name)
     set_value!(reservoir, :available, row.available)
+    # head_to_volume_factor and operation_cost are required oneOf-wrapper fields with no
+    # placeholder representation a shadow instance could stand in with, so both must be
+    # staged before any field below needs a shadow to resolve its declared unit.
+    set_value!(
+        reservoir,
+        :head_to_volume_factor,
+        IC.LinearFunctionData(; proportional_term = 1.0, constant_term = 0.0),
+    )
+    set_value!(reservoir, :operation_cost, PC.HydroReservoirCost(; cost_type = "HYDRO_RES"))
     # level_data_type discriminates the unit of every level quantity below, so it
     # must be set first: left at its USABLE_VOLUME default they would be read as
     # cubic metres.
@@ -552,12 +565,6 @@ function _add_reservoir!(
     set_value!(reservoir, :outflow, 1.0, "MW")
     set_value!(reservoir, :level_targets, row.storage_target, "MWh")
     set_value!(reservoir, :intake_elevation, 0.0, "m")
-    set_value!(
-        reservoir,
-        :head_to_volume_factor,
-        IC.LinearFunctionData(; proportional_term = 1.0, constant_term = 0.0),
-    )
-    set_value!(reservoir, :operation_cost, PC.HydroReservoirCost())
     set_value!(reservoir, link, [turbine_id])
     add_component!(sys, reservoir)
     return get_value(reservoir, :id)
@@ -650,6 +657,7 @@ function make_storage(
         component,
         :operation_cost,
         PC.StorageCost(;
+            cost_type = "STORAGE",
             fixed = 0.0,
             shut_down = 0.0,
             start_up = _coerce(PC.StorageCostStartUp, 0.0),

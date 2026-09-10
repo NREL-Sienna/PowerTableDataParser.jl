@@ -118,9 +118,11 @@ end
 
 @testset "unset optional properties are omitted, not null" begin
     sys = PDP.OpenAPISystem(100.0)
-    bus = PDP.PO.ACBus()
+    bus = PDP.stage(PDP.PO.ACBus)
     PDP.set_value!(bus, :id, 1)
     PDP.set_value!(bus, :name, "Abel")
+    PDP.set_value!(bus, :available, true)
+    PDP.set_value!(bus, :number, 1)
     PDP.add_component!(sys, bus)
     doc = _round_trip(sys)
     @test !haskey(doc["components"]["ACBus"][1], "base_voltage")

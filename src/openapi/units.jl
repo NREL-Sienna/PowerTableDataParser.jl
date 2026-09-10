@@ -88,11 +88,31 @@ _placeholder(::Type{Dict{K, V}}) where {K, V} = Dict{K, V}()
 _placeholder(::Type{Vector{T}}) where {T} = T[]
 
 """
+A placeholder for a required oneOf-wrapper field (`FunctionData`, `*OperationCost`, ...):
+the first declared variant, itself placeholder-built recursively.
+
+A shadow only needs *some* valid instance to satisfy the outer struct's required kwarg —
+the generated `declared_unit`/`declared_quantity` methods it stands in for never read a
+oneOf field's own contents, only a plain sibling discriminator's — so which variant is
+picked is immaterial. `EnumAPIModel` gets no such case: unlike a oneOf member, an enum's
+inner constructor validates against a fixed string whitelist this package cannot enumerate,
+so a required enum field still falls through to the generic fallback below.
+"""
+function _placeholder(::Type{T}) where {T <: IC.OneOfAPIModel}
+    variant = first(Base.uniontypes(fieldtype(T, :value)))
+    return T(_placeholder(variant))
+end
+
+"""
 Recursive fallback: a required compound "shape" type (`MinMax`, `UpDown`, `FromTo`, ...) is
-plain numbers with no validation, so a zeroed instance is always constructible. A required
-field with no such shape and no case above (an enum wrapper, say) means a caller staged a
-discriminated numeric field before the enum field its shadow needs — a genuine ordering bug,
-so this fails loudly rather than guessing a value.
+plain numbers with no validation, so a zeroed instance is always constructible. A field
+named for one of the [`_DEFAULT_BASIS`](@ref) discriminators (`power_units`, ...) uses that
+same default, whatever struct it turns up nested in — a oneOf variant's own basis field
+(`CostCurve.power_units`, say) is exactly as placeholder-able as the top-level one
+`_default_bases!` defaults. A required field with no such shape and no case above (an enum
+wrapper outside that known set) means a caller staged a discriminated numeric field before
+the enum field its shadow needs — a genuine ordering bug, so this fails loudly rather than
+guessing a value.
 """
 function _placeholder(::Type{T}) where {T}
     kwargs = Dict{Symbol, Any}()
@@ -100,7 +120,12 @@ function _placeholder(::Type{T}) where {T}
         name === :additional_properties && continue
         ftype = fieldtype(T, name)
         _has_absent(ftype) && continue
-        kwargs[name] = _placeholder(_concrete_field_type(T, name))
+        concrete = _concrete_field_type(T, name)
+        kwargs[name] = if haskey(_DEFAULT_BASIS, name)
+            _coerce(concrete, _DEFAULT_BASIS[name])
+        else
+            _placeholder(concrete)
+        end
     end
     return T(; kwargs...)
 end
@@ -182,9 +207,9 @@ function _declared(s::Staged{T}, prop::Symbol) where {T}
     return IC.declared_unit(shadow, Val(prop)), IC.declared_quantity(shadow, Val(prop))
 end
 
-function _reject_declared(::Type{T}, prop::Symbol) where {T}
+function _reject_declared(s::Staged{T}, prop::Symbol) where {T}
     if IC.has_declared_unit(T, Val(prop))
-        unit = declared_unit_label(T, prop)
+        unit = declared_unit_label(s, prop)
         throw(
             IS.DataFormatError(
                 "$(nameof(T)).$prop declares unit \"$unit\"; use the 4-argument set_value!",
@@ -194,11 +219,12 @@ function _reject_declared(::Type{T}, prop::Symbol) where {T}
     return
 end
 
-"""Best-effort unit label for an error message; falls back to `"?"` when it takes an
-instance (a discriminated property) to resolve, which an error path should not build."""
-function declared_unit_label(::Type{T}, prop::Symbol) where {T}
+"""Best-effort unit label for an error message: resolves through a shadow instance for a
+discriminated property (mirroring `_declared`), falling back to `"?"` only if that also
+fails (e.g. a required sibling discriminator has no default and is not yet staged)."""
+function declared_unit_label(s::Staged{T}, prop::Symbol) where {T}
     return try
-        IC.declared_unit(T, Val(prop))
+        first(_declared(s, prop))
     catch
         "?"
     end
@@ -292,7 +318,7 @@ function set_value!(
     value,
     source_unit::AbstractString,
 ) where {T}
-    _reject_declared(T, prop)
+    _reject_declared(s, prop)
     throw(
         IS.DataFormatError(
             "$(nameof(T)).$prop: a unit applies only to a number or a compound " *
@@ -303,16 +329,29 @@ end
 
 """Assign a property that declares no unit: names, ids, flags, enum strings."""
 function set_value!(s::Staged{T}, prop::Symbol, value) where {T}
-    _reject_declared(T, prop)
+    _reject_declared(s, prop)
     s.fields[prop] = _coerce(_concrete_field_type(T, prop), value)
     return
 end
 
+"""
+The plain value inside an enum wrapper (`OperationalStates`, `PrimeMovers`, `UnitSystem`,
+...); anything else is returned unchanged.
+
+`get_value` reads through this rather than returning the wrapper: every comparison in this
+package and its tests is against the schema's bare string constants (`"ONLINE"`, `"FIXED"`,
+...), and an `EnumAPIModel` does not compare equal to the string it wraps. `OneOfAPIModel`
+(a oneOf wrapper over concrete struct variants, not a string) is deliberately excluded — a
+caller reading one of those wants the concrete variant, not a string.
+"""
+_unwrap(value::IC.EnumAPIModel) = value.value
+_unwrap(value) = value
+
 """Return the staged value of `prop`."""
-get_value(s::Staged, prop::Symbol) = s.fields[prop]
+get_value(s::Staged, prop::Symbol) = _unwrap(s.fields[prop])
 
 """Return the stored value of `prop` on an already-materialized component."""
-get_value(o, prop::Symbol) = getproperty(o, prop)
+get_value(o, prop::Symbol) = _unwrap(getproperty(o, prop))
 
 _declared_read(s::Staged, prop::Symbol) = _declared(s, prop)
 _declared_read(o::T, prop::Symbol) where {T} =

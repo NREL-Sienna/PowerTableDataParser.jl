@@ -43,10 +43,11 @@ end
         @test PDP.get_value(reservoir, :level_data_type) == "ENERGY"
         downstream = PDP.get_value(reservoir, :downstream_turbines)
         upstream = PDP.get_value(reservoir, :upstream_turbines)
-        # A reservoir links one way or the other, never neither.
-        @test !isnothing(downstream) || !isnothing(upstream)
+        # A reservoir links one way or the other, never neither. An unstaged optional
+        # field reads back as `PDP.Absent`, not `nothing`.
+        @test !(downstream isa PDP.Absent) || !(upstream isa PDP.Absent)
         for ids in (downstream, upstream)
-            if !isnothing(ids)
+            if !(ids isa PDP.Absent)
                 @test all(in(turbine_ids), ids)
                 union!(linked, ids)
             end
@@ -172,7 +173,7 @@ end
     sys, _ = _generation()
     for type_name in vcat(GENERATOR_TYPES, "HydroReservoir")
         for component in PDP.get_components(sys, type_name)
-            @test PDP.OpenAPI.check_required(component)
+            @test required_fields_populated(component)
         end
     end
 end

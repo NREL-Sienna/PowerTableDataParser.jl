@@ -140,7 +140,7 @@ end
     sys, _ = _branches()
     for type_name in PDP.component_type_names(sys)
         for component in PDP.get_components(sys, type_name)
-            @test PDP.OpenAPI.check_required(component)
+            @test required_fields_populated(component)
         end
     end
 end

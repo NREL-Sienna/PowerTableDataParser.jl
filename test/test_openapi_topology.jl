@@ -91,7 +91,7 @@ end
     sys, _ = _topology()
     for type_name in PDP.component_type_names(sys)
         for component in PDP.get_components(sys, type_name)
-            @test PDP.OpenAPI.check_required(component)
+            @test required_fields_populated(component)
         end
     end
 end
@@ -108,7 +108,7 @@ end
 @testset "nonzero shunt admittance produces a FixedAdmittance" begin
     sys = PDP.OpenAPISystem(100.0)
     reg = PDP.get_registry(sys)
-    bus = PDP.PO.ACBus()
+    bus = PDP.stage(PDP.PO.ACBus)
     PDP.set_value!(bus, :id, PDP.register_bus!(reg, 106, "Alber"))
     PDP.set_value!(bus, :number, 106)
     PDP.set_value!(bus, :name, "Alber")
@@ -131,7 +131,7 @@ end
     @test PDP.get_value(shunt, :name) == "Alber"
     @test PDP.get_value(shunt, :bus) == bus_id
     @test PDP.get_value(shunt, :admittance_units) == "COMPONENT_MVAR"
-    y = PDP.get_value(shunt, :Y)
+    y = PDP.get_value(shunt, :y)
     @test y.real ≈ 0.0
     @test y.imag ≈ -100.0
 
@@ -148,11 +148,11 @@ end
     @test length(shunts2) == 2
     camus = first(s for s in shunts2 if PDP.get_value(s, :name) == "Camus")
     @test PDP.get_value(camus, :admittance_units) == "COMPONENT_MVAR"
-    y2 = PDP.get_value(camus, :Y)
+    y2 = PDP.get_value(camus, :y)
     @test y2.real ≈ 0.0
     @test y2.imag ≈ -1.0 * PDP.get_base_power(sys)
     @test y2.imag ≈ -100.0
-    @test PDP.get_value(camus, :Y, "MVAr").imag ≈ -100.0
+    @test PDP.get_value(camus, :y, "MVAr").imag ≈ -100.0
 
     # A pu row and a raw row that describe the same physical shunt land on the
     # same number under one basis.
@@ -165,7 +165,7 @@ end
         s in PDP.get_components(sys, "FixedAdmittance") if
         PDP.get_value(s, :name) == "Dumas"
     )
-    y3 = PDP.get_value(dumas, :Y)
+    y3 = PDP.get_value(dumas, :y)
     @test y3.real ≈ 2.0
     @test y3.imag ≈ -50.0
 end

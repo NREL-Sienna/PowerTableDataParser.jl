@@ -102,17 +102,14 @@ function _add_fixed_admittance!(sys::OpenAPISystem, reg, bus, bus_id::Int, per_u
     set_value!(shunt, :available, true)
     set_value!(shunt, :bus, bus_id)
     set_value!(shunt, :admittance_units, "COMPONENT_MVAR")
-    # UPSTREAM BUG (PowerOpenAPIModels/PowerOperationsOpenAPIModels units.jl): `y`'s unit
-    # metadata is registered under `Val(:Y)`, but the generated `FixedAdmittance` struct
-    # field is lowercase `y`, so `has_declared_unit(FixedAdmittance, Val(:y))` — the real
-    # field name — returns false and the 4-argument set_value! cannot find it. Falling back
-    # to the unitless form here; the value is already MVAr-equivalent for
-    # `admittance_units = "COMPONENT_MVAR"`, exactly what the unit-checked path would have
-    # produced, so this reproduces the same number pending the upstream casing fix.
+    # `y` is per-unit on `admittance_units`, which is staged above as `COMPONENT_MVAR`; the
+    # raw shunt columns already state that basis (see the docstring), so this converts as a
+    # same-unit no-op.
     set_value!(
         shunt,
         :y,
-        IC.ComplexNumber(; real = bus.shunt_g * scale, imag = bus.shunt_b * scale),
+        (real = bus.shunt_g * scale, imag = bus.shunt_b * scale),
+        "MVAr",
     )
     # No device base of its own: base_power records the system base.
     set_value!(shunt, :base_power, get_base_power(sys), "MVA")

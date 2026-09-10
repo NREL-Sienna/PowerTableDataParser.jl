@@ -59,6 +59,14 @@ how a target survives into a model that only speaks in bands.
 """
 const NOMINAL_VOLTAGE_BAND = (min = 1.0, max = 1.0)
 
+"""
+Tap position count a transformer keeps when the tables state no COD/tap-count columns.
+
+PSS/E's own default (`NTP1`) for an uncontrolled tap; the tables carry no equivalent
+column, so the alternative is leaving the count unset.
+"""
+const DEFAULT_NUMBER_OF_TAP_POSITIONS = 33
+
 """Assign a property the data may not state."""
 function _set_optional!(component, prop::Symbol, value, unit::AbstractString)
     if isnothing(value)
@@ -116,6 +124,7 @@ function _add_transformer!(sys::OpenAPISystem, branch, arc::Int, from_kv, to_kv)
     set_value!(circuit, :control_objective, "FIXED")
     set_value!(circuit, :control_limits, DEFAULT_TAP_CONTROL_BAND, "1")
     set_value!(circuit, :controlled_quantity_limits, NOMINAL_VOLTAGE_BAND, "pu")
+    set_value!(circuit, :number_of_tap_positions, DEFAULT_NUMBER_OF_TAP_POSITIONS)
     set_value!(circuit, :active_power_flow, branch.active_power_flow, "MW")
     set_value!(circuit, :reactive_power_flow, branch.reactive_power_flow, "MVAr")
     set_value!(circuit, :base_power, get_base_power(sys), "MVA")
