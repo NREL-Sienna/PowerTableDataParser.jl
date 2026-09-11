@@ -17,7 +17,6 @@
     @test cost.variable_operation_cost.value.value_curve.value.function_data.value.function_type ==
           "PIECEWISE_STEP"
     @test cost.start_up.value > 0
-    @test required_fields_populated(cost)
 end
 
 @testset "RTS uses the heat-rate columns" begin

@@ -15,29 +15,6 @@ const PDP = PowerTableDataParser
 # own API to verify them independently of the writer.
 const InfraStore = IS.InfraStore
 
-"""
-Whether every field a materialized component's type declares without an `Absent` arm holds
-a concrete (non-absent) value.
-
-The removed OpenAPI.jl 1.x runtime used to check this dynamically (`check_required`);
-post-migration the generated `Base.@kwdef` constructor already enforces it structurally — a
-required field has no default and no `Absent` arm, so `UndefKeywordError` fires at
-`materialize` time before a caller ever holds an incomplete instance. This walks the same
-invariant explicitly rather than calling the removed function.
-"""
-function required_fields_populated(component)
-    T = typeof(component)
-    for name in fieldnames(T)
-        name === :additional_properties && continue
-        ftype = fieldtype(T, name)
-        if ftype isa Union && PDP.Absent in Base.uniontypes(ftype)
-            continue
-        end
-        getproperty(component, name) isa PDP.Absent && return false
-    end
-    return true
-end
-
 import Aqua
 Aqua.test_unbound_args(PowerTableDataParser)
 Aqua.test_undefined_exports(PowerTableDataParser)

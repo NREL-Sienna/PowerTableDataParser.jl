@@ -39,9 +39,7 @@ function _add_reserve!(sys::OpenAPISystem, reserve)
     set_value!(component, :id, service_id)
     set_value!(component, :name, reserve.name)
     set_value!(component, :available, true)
-    # Staged before any power-family field: `reserve_direction` is required and has no
-    # generic placeholder a shadow instance could stand in with, so it must already be
-    # staged by the time a discriminated sibling field's declared unit is resolved.
+    # `reserve_direction` staged before any power-family field — see `_shadow` (units.jl).
     set_value!(component, :reserve_direction, get_reserve_direction(reserve.direction))
     set_value!(component, :time_frame, _seconds_to_minutes(reserve.timeframe), "min")
     set_value!(component, :requirement, get(reserve, :requirement, 0.0), "MW")

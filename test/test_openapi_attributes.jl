@@ -10,7 +10,6 @@ end
     @test all(PDP.get_value(e, :basis) == "FUEL_INPUT" for e in emissions)
     @test all(PDP.get_value(e, :mass_unit) == "LB" for e in emissions)
     @test all(PDP.get_value(e, :energy_unit) == "MMBTU" for e in emissions)
-    @test all(required_fields_populated(e) for e in emissions)
 
     # Particulates alone stay CUSTOM: the enum splits them by a size RTS omits.
     @test Set(PDP.get_value(e, :pollutant) for e in emissions) ==

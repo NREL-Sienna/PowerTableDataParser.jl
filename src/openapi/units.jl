@@ -49,6 +49,10 @@ _coerce(::Type{T}, value) where {T} = T(value)
 _has_absent(u::Union) = Absent in Base.uniontypes(u)
 _has_absent(::Type) = false
 
+"""Whether `value` is `Absent`."""
+is_absent(::Absent) = true
+is_absent(_) = false
+
 """The member types of `t`; a non-`Union` type is its own sole member."""
 _concrete_types(u::Union) = Base.uniontypes(u)
 _concrete_types(t::Type) = (t,)
@@ -221,12 +225,17 @@ end
 
 """Best-effort unit label for an error message: resolves through a shadow instance for a
 discriminated property (mirroring `_declared`), falling back to `"?"` only if that also
-fails (e.g. a required sibling discriminator has no default and is not yet staged)."""
+fails because some other required field has no default and is not yet staged — building
+its placeholder then raises a `MethodError`, since a plain (non-`@kwdef`) enum type has no
+keyword constructor for `_placeholder`'s generic fallback to call."""
+_placeholder_gap_label(::MethodError) = "?"
+_placeholder_gap_label(e) = rethrow(e)
+
 function declared_unit_label(s::Staged{T}, prop::Symbol) where {T}
     return try
         first(_declared(s, prop))
-    catch
-        "?"
+    catch e
+        _placeholder_gap_label(e)
     end
 end
 

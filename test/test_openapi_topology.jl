@@ -87,15 +87,6 @@ end
     end
 end
 
-@testset "every component satisfies its required properties" begin
-    sys, _ = _topology()
-    for type_name in PDP.component_type_names(sys)
-        for component in PDP.get_components(sys, type_name)
-            @test required_fields_populated(component)
-        end
-    end
-end
-
 @testset "zero-shunt buses emit no FixedAdmittance" begin
     sys, _ = _topology()
     # This fixture's descriptor maps shunt columns to names absent from

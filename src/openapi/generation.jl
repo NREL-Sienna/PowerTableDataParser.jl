@@ -197,101 +197,108 @@ end
 """Schema enum values for `status` on `ThermalStandard` / `ThermalMultiStart`."""
 const THERMAL_STATUS_ENUM_VALUES = ("OFFLINE", "STARTUP", "ONLINE", "SHUTDOWN")
 
-function _thermal_status(gen_name::AbstractString, value::Bool)
-    if value
-        return "ONLINE"
-    end
-    return "OFFLINE"
-end
-
-function _thermal_status(gen_name::AbstractString, value::Integer)
-    if isone(value)
-        return "ONLINE"
-    elseif iszero(value)
-        return "OFFLINE"
-    end
-    throw(
-        IS.DataFormatError(
-            "invalid status_at_start=$value for generator $gen_name in make_thermal_generator",
-        ),
-    )
-end
-
-function _thermal_status(gen_name::AbstractString, value::AbstractString)
-    upper = uppercase(value)
-    if upper in THERMAL_STATUS_ENUM_VALUES
-        return upper
-    end
-    lowered = lowercase(value)
-    if lowered == "true"
-        return "ONLINE"
-    elseif lowered == "false"
-        return "OFFLINE"
-    end
-    throw(
-        IS.DataFormatError(
-            "invalid status_at_start=\"$value\" for generator $gen_name in make_thermal_generator",
-        ),
-    )
-end
-
-function _thermal_status(gen_name::AbstractString, value)
-    throw(
-        IS.DataFormatError(
-            "invalid status_at_start=$value for generator $gen_name in make_thermal_generator",
-        ),
-    )
-end
-
 """Schema enum values for `commitment_mode` on `ThermalStandard` / `ThermalMultiStart` / `HydroPumpTurbine`."""
 const COMMITMENT_MODE_ENUM_VALUES =
     ("UNCOMMITTED", "COMMITTED", "SELF_SCHEDULED", "RELIABILITY", "MUST_RUN")
 
-function _commitment_mode(gen_name::AbstractString, value::Bool)
+"""
+Shared dispatch behind `_thermal_status` and `_commitment_mode`: both map a Bool/Integer/
+String-ish flag onto one of two enum labels, differing only in the labels, the field name
+used in error messages, and the enum vocabulary a string value is validated against.
+"""
+function _bool_like_enum(
+    field_name::AbstractString,
+    gen_name::AbstractString,
+    value::Bool,
+    on_value::AbstractString,
+    off_value::AbstractString,
+    enum_values,
+)
     if value
-        return "MUST_RUN"
+        return on_value
     end
-    return "COMMITTED"
+    return off_value
 end
 
-function _commitment_mode(gen_name::AbstractString, value::Integer)
+function _bool_like_enum(
+    field_name::AbstractString,
+    gen_name::AbstractString,
+    value::Integer,
+    on_value::AbstractString,
+    off_value::AbstractString,
+    enum_values,
+)
     if isone(value)
-        return "MUST_RUN"
+        return on_value
     elseif iszero(value)
-        return "COMMITTED"
+        return off_value
     end
     throw(
         IS.DataFormatError(
-            "invalid must_run=$value for generator $gen_name in make_thermal_generator",
+            "invalid $field_name=$value for generator $gen_name in make_thermal_generator",
         ),
     )
 end
 
-function _commitment_mode(gen_name::AbstractString, value::AbstractString)
+function _bool_like_enum(
+    field_name::AbstractString,
+    gen_name::AbstractString,
+    value::AbstractString,
+    on_value::AbstractString,
+    off_value::AbstractString,
+    enum_values,
+)
     upper = uppercase(value)
-    if upper in COMMITMENT_MODE_ENUM_VALUES
+    if upper in enum_values
         return upper
     end
     lowered = lowercase(value)
     if lowered == "true"
-        return "MUST_RUN"
+        return on_value
     elseif lowered == "false"
-        return "COMMITTED"
+        return off_value
     end
     throw(
         IS.DataFormatError(
-            "invalid must_run=\"$value\" for generator $gen_name in make_thermal_generator",
+            "invalid $field_name=\"$value\" for generator $gen_name in make_thermal_generator",
         ),
     )
 end
 
-function _commitment_mode(gen_name::AbstractString, value)
+function _bool_like_enum(
+    field_name::AbstractString,
+    gen_name::AbstractString,
+    value,
+    on_value::AbstractString,
+    off_value::AbstractString,
+    enum_values,
+)
     throw(
         IS.DataFormatError(
-            "invalid must_run=$value for generator $gen_name in make_thermal_generator",
+            "invalid $field_name=$value for generator $gen_name in make_thermal_generator",
         ),
     )
 end
+
+_thermal_status(gen_name::AbstractString, value) =
+    _bool_like_enum(
+        "status_at_start",
+        gen_name,
+        value,
+        "ONLINE",
+        "OFFLINE",
+        THERMAL_STATUS_ENUM_VALUES,
+    )
+
+_commitment_mode(gen_name::AbstractString, value) =
+    _bool_like_enum(
+        "must_run",
+        gen_name,
+        value,
+        "MUST_RUN",
+        "COMMITTED",
+        COMMITMENT_MODE_ENUM_VALUES,
+    )
 
 function make_thermal_generator(
     sys::OpenAPISystem,
@@ -309,9 +316,7 @@ function make_thermal_generator(
     set_value!(component, :available, gen.available)
     set_value!(component, :status, _thermal_status(gen.name, gen.status_at_start))
     set_value!(component, :bus, bus_id)
-    # Staged before any power-family field: `operation_cost` is a required, discriminated
-    # (`oneOf`) field with no placeholder a shadow instance could stand in with, so it must
-    # already be staged by the time a sibling field's declared unit is resolved.
+    # `operation_cost` staged before any power-family field — see `_shadow` (units.jl).
     set_value!(
         component,
         :operation_cost,
@@ -385,10 +390,8 @@ function make_renewable_generator(
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
-    # Staged before any power-family field: `operation_cost` (oneOf) and `prime_mover_type`
-    # (enum) are both required, discriminated-unit-adjacent fields with no placeholder a
-    # shadow instance could stand in with, so both must already be staged by the time a
-    # sibling field's declared unit is resolved.
+    # `operation_cost`/`prime_mover_type` staged before any power-family field — see
+    # `_shadow` (units.jl).
     set_value!(
         component,
         :operation_cost,
@@ -428,8 +431,8 @@ function make_renewable_generator(
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
-    # `prime_mover_type` is a required enum field with no placeholder a shadow instance
-    # could stand in with, so it must be staged before any power-family field below.
+    # `prime_mover_type` staged before any power-family field below — see `_shadow`
+    # (units.jl).
     set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
@@ -459,10 +462,8 @@ function make_hydro_dispatch(
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
-    # Staged before any power-family field: `operation_cost` (oneOf) and `prime_mover_type`
-    # (enum) are both required, discriminated-unit-adjacent fields with no placeholder a
-    # shadow instance could stand in with, so both must already be staged by the time a
-    # sibling field's declared unit is resolved.
+    # `operation_cost`/`prime_mover_type` staged before any power-family field — see
+    # `_shadow` (units.jl).
     set_value!(
         component,
         :operation_cost,
@@ -541,9 +542,7 @@ function _add_reservoir!(
     set_value!(reservoir, :id, register!(get_registry(sys), "HydroReservoir", name))
     set_value!(reservoir, :name, name)
     set_value!(reservoir, :available, row.available)
-    # head_to_volume_factor and operation_cost are required oneOf-wrapper fields with no
-    # placeholder representation a shadow instance could stand in with, so both must be
-    # staged before any field below needs a shadow to resolve its declared unit.
+    # `head_to_volume_factor`/`operation_cost` staged first — see `_shadow` (units.jl).
     set_value!(
         reservoir,
         :head_to_volume_factor,
@@ -590,9 +589,7 @@ function make_hydro_turbine(
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
-    # Staged before any power-family field: `operation_cost` is a required, discriminated
-    # (`oneOf`) field with no placeholder a shadow instance could stand in with, so it must
-    # already be staged by the time a sibling field's declared unit is resolved.
+    # `operation_cost` staged before any power-family field — see `_shadow` (units.jl).
     set_value!(
         component,
         :operation_cost,
@@ -649,10 +646,8 @@ function make_storage(
     set_value!(component, :bus, bus_id)
     set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :storage_technology_type, "OTHER_CHEM")
-    # Staged before any power- or energy-family field: `operation_cost` is a required,
-    # discriminated (`oneOf`) field with no placeholder a shadow instance could stand in
-    # with, so it must already be staged by the time a sibling field's declared unit is
-    # resolved.
+    # `operation_cost` staged before any power- or energy-family field — see `_shadow`
+    # (units.jl).
     set_value!(
         component,
         :operation_cost,

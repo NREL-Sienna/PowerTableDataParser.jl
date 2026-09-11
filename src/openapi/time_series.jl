@@ -483,7 +483,7 @@ function _stamp_supplemental_attribute_associations!(store::IS.Store, sys::OpenA
     end
     IS.import_supplemental_attribute_association_rows!(
         store,
-        JSON.json([OpenAPI.Runtime._encode(a) for a in associations]),
+        JSON.json(IC.encode(associations)),
     )
     return
 end

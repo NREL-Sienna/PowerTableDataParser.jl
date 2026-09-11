@@ -45,9 +45,9 @@ end
         upstream = PDP.get_value(reservoir, :upstream_turbines)
         # A reservoir links one way or the other, never neither. An unstaged optional
         # field reads back as `PDP.Absent`, not `nothing`.
-        @test !(downstream isa PDP.Absent) || !(upstream isa PDP.Absent)
+        @test !PDP.is_absent(downstream) || !PDP.is_absent(upstream)
         for ids in (downstream, upstream)
-            if !(ids isa PDP.Absent)
+            if !PDP.is_absent(ids)
                 @test all(in(turbine_ids), ids)
                 union!(linked, ids)
             end
@@ -167,13 +167,4 @@ end
         nothing,
         nothing,
     )
-end
-
-@testset "every generator component satisfies its required properties" begin
-    sys, _ = _generation()
-    for type_name in vcat(GENERATOR_TYPES, "HydroReservoir")
-        for component in PDP.get_components(sys, type_name)
-            @test required_fields_populated(component)
-        end
-    end
 end
