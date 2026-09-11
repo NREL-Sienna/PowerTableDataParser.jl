@@ -30,20 +30,15 @@ YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 
 [sources]
-# LOCAL PATH CO-DEV PINS (temporary): PowerOpenAPIModels split InfrastructureCore/
-# InfrastructureTimeSeries out on local disk only; committed git pins below still point at
-# `jd/schemas-0.1.0`, which predates the split. Revert to git-url pins (with subdirs matching
-# the new package names) once the split is pushed. InfrastructureSystems must also point at
-# the local IS4 checkout (not the remote branch) because that checkout already carries this
-# same split (uncommitted) and the remote IS4 branch does not yet.
-InfrastructureSystems = {path = "../InfrastructureSystems.jl"}
-InfrastructureCoreOpenAPIModels = {path = "../PowerOpenAPIModels/InfrastructureCoreOpenAPIModels.jl"}
-InfrastructureTimeSeriesOpenAPIModels = {path = "../PowerOpenAPIModels/InfrastructureTimeSeriesOpenAPIModels.jl"}
-PowerCoreOpenAPIModels = {path = "../PowerOpenAPIModels/PowerCoreOpenAPIModels.jl"}
-PowerOpenAPIModels = {path = "../PowerOpenAPIModels/PowerOpenAPIModels.jl"}
-PowerOperationsOpenAPIModels = {path = "../PowerOpenAPIModels/PowerOperationsOpenAPIModels.jl"}
-PowerDynamicsOpenAPIModels = {path = "../PowerOpenAPIModels/PowerDynamicsOpenAPIModels.jl"}
-PowerInvestmentsOpenAPIModels = {path = "../PowerOpenAPIModels/PowerInvestmentsOpenAPIModels.jl"}
+# Branch pins until the OpenAPI packages are registered and the psy6-line branches merge.
+InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl.git", rev = "jd/openapi-1x-suite"}
+InfrastructureCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "InfrastructureCoreOpenAPIModels.jl"}
+InfrastructureTimeSeriesOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "InfrastructureTimeSeriesOpenAPIModels.jl"}
+PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerCoreOpenAPIModels.jl"}
+PowerOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerOpenAPIModels.jl"}
+PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerOperationsOpenAPIModels.jl"}
+PowerDynamicsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerDynamicsOpenAPIModels.jl"}
+PowerInvestmentsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerInvestmentsOpenAPIModels.jl"}
 
 [extensions]
 PowerTableDataParserPowerSystemsExt = ["PowerSystems", "TimeSeries"]

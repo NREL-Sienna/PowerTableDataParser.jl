@@ -25,17 +25,16 @@ TimeSeries = "9e3dc215-6440-5c97-bce1-76c03772f85e"
 # Without this the test environment resolves the registered PowerTableDataParser
 # instead of the working tree, so local changes are never exercised.
 PowerTableDataParser = {path = ".."}
-# LOCAL PATH CO-DEV PINS (temporary): see ../Project.toml for the split rationale; revert to
-# git-url pins once the split is pushed.
-InfrastructureSystems = {path = "../../InfrastructureSystems.jl"}
-PowerSystems = {path = "../../PowerSystems.jl"}
-InfrastructureCoreOpenAPIModels = {path = "../../PowerOpenAPIModels/InfrastructureCoreOpenAPIModels.jl"}
-InfrastructureTimeSeriesOpenAPIModels = {path = "../../PowerOpenAPIModels/InfrastructureTimeSeriesOpenAPIModels.jl"}
-PowerCoreOpenAPIModels = {path = "../../PowerOpenAPIModels/PowerCoreOpenAPIModels.jl"}
-PowerOpenAPIModels = {path = "../../PowerOpenAPIModels/PowerOpenAPIModels.jl"}
-PowerOperationsOpenAPIModels = {path = "../../PowerOpenAPIModels/PowerOperationsOpenAPIModels.jl"}
-PowerDynamicsOpenAPIModels = {path = "../../PowerOpenAPIModels/PowerDynamicsOpenAPIModels.jl"}
-PowerInvestmentsOpenAPIModels = {path = "../../PowerOpenAPIModels/PowerInvestmentsOpenAPIModels.jl"}
+# Branch pins until the OpenAPI packages are registered and the psy6-line branches merge.
+InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl.git", rev = "jd/openapi-1x-suite"}
+PowerSystems = {url = "https://github.com/Sienna-Platform/PowerSystems.jl.git", rev = "jd/openapi-1x"}
+InfrastructureCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "InfrastructureCoreOpenAPIModels.jl"}
+InfrastructureTimeSeriesOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "InfrastructureTimeSeriesOpenAPIModels.jl"}
+PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerCoreOpenAPIModels.jl"}
+PowerOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerOpenAPIModels.jl"}
+PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerOperationsOpenAPIModels.jl"}
+PowerDynamicsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerDynamicsOpenAPIModels.jl"}
+PowerInvestmentsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "jd/openapi_deps_update", subdir = "PowerInvestmentsOpenAPIModels.jl"}
 
 [compat]
 julia = "^1.10"
