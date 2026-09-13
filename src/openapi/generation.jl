@@ -194,6 +194,112 @@ function _active_power_limits(gen::NamedTuple)
     return (min = gen.active_power_limits_min, max = gen.active_power_limits_max)
 end
 
+"""Schema enum values for `status` on `ThermalStandard` / `ThermalMultiStart`."""
+const THERMAL_STATUS_ENUM_VALUES = ("OFFLINE", "STARTUP", "ONLINE", "SHUTDOWN")
+
+"""Schema enum values for `commitment_mode` on `ThermalStandard` / `ThermalMultiStart` / `HydroPumpTurbine`."""
+const COMMITMENT_MODE_ENUM_VALUES =
+    ("UNCOMMITTED", "COMMITTED", "SELF_SCHEDULED", "RELIABILITY", "MUST_RUN")
+
+"""
+Shared dispatch behind `_thermal_status` and `_commitment_mode`: both map a Bool/Integer/
+String-ish flag onto one of two enum labels, differing only in the labels, the field name
+used in error messages, and the enum vocabulary a string value is validated against.
+"""
+function _bool_like_enum(
+    field_name::AbstractString,
+    gen_name::AbstractString,
+    value::Bool,
+    on_value::AbstractString,
+    off_value::AbstractString,
+    enum_values,
+)
+    if value
+        return on_value
+    end
+    return off_value
+end
+
+function _bool_like_enum(
+    field_name::AbstractString,
+    gen_name::AbstractString,
+    value::Integer,
+    on_value::AbstractString,
+    off_value::AbstractString,
+    enum_values,
+)
+    if isone(value)
+        return on_value
+    elseif iszero(value)
+        return off_value
+    end
+    throw(
+        IS.DataFormatError(
+            "invalid $field_name=$value for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
+function _bool_like_enum(
+    field_name::AbstractString,
+    gen_name::AbstractString,
+    value::AbstractString,
+    on_value::AbstractString,
+    off_value::AbstractString,
+    enum_values,
+)
+    upper = uppercase(value)
+    if upper in enum_values
+        return upper
+    end
+    lowered = lowercase(value)
+    if lowered == "true"
+        return on_value
+    elseif lowered == "false"
+        return off_value
+    end
+    throw(
+        IS.DataFormatError(
+            "invalid $field_name=\"$value\" for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
+function _bool_like_enum(
+    field_name::AbstractString,
+    gen_name::AbstractString,
+    value,
+    on_value::AbstractString,
+    off_value::AbstractString,
+    enum_values,
+)
+    throw(
+        IS.DataFormatError(
+            "invalid $field_name=$value for generator $gen_name in make_thermal_generator",
+        ),
+    )
+end
+
+_thermal_status(gen_name::AbstractString, value) =
+    _bool_like_enum(
+        "status_at_start",
+        gen_name,
+        value,
+        "ONLINE",
+        "OFFLINE",
+        THERMAL_STATUS_ENUM_VALUES,
+    )
+
+_commitment_mode(gen_name::AbstractString, value) =
+    _bool_like_enum(
+        "must_run",
+        gen_name,
+        value,
+        "MUST_RUN",
+        "COMMITTED",
+        COMMITMENT_MODE_ENUM_VALUES,
+    )
+
 function make_thermal_generator(
     sys::OpenAPISystem,
     data::PowerSystemTableData,
@@ -204,12 +310,18 @@ function make_thermal_generator(
     active_power_limits = _active_power_limits(gen)
     reactive_power, reactive_power_limits = make_reactive_params(gen)
 
-    component = PO.ThermalStandard()
+    component = stage(PO.ThermalStandard)
     set_value!(component, :id, register!(get_registry(sys), "ThermalStandard", gen.name))
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
-    set_value!(component, :status, gen.status_at_start)
+    set_value!(component, :status, _thermal_status(gen.name, gen.status_at_start))
     set_value!(component, :bus, bus_id)
+    # `operation_cost` staged before any power-family field — see `_shadow` (units.jl).
+    set_value!(
+        component,
+        :operation_cost,
+        make_thermal_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
+    )
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     set_value!(
@@ -227,13 +339,8 @@ function make_thermal_generator(
         make_timelimits(gen, :min_up_time, :min_down_time),
         "min",
     )
-    set_value!(
-        component,
-        :operation_cost,
-        make_thermal_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
-    )
     set_value!(component, :base_power, device_base_power(sys, gen), "MVA")
-    set_value!(component, :must_run, _as_bool(gen.must_run))
+    set_value!(component, :commitment_mode, _commitment_mode(gen.name, gen.must_run))
     set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :fuel, thermal_fuel(gen.fuel))
     return component
@@ -247,7 +354,7 @@ function make_synchronous_condenser(
 )
     reactive_power, reactive_power_limits = make_reactive_params(gen)
 
-    component = PO.SynchronousCondenser()
+    component = stage(PO.SynchronousCondenser)
     set_value!(
         component,
         :id,
@@ -278,11 +385,19 @@ function make_renewable_generator(
 )
     reactive_power, reactive_power_limits = make_reactive_params(gen)
 
-    component = PO.RenewableDispatch()
+    component = stage(PO.RenewableDispatch)
     set_value!(component, :id, register!(get_registry(sys), "RenewableDispatch", gen.name))
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
+    # `operation_cost`/`prime_mover_type` staged before any power-family field — see
+    # `_shadow` (units.jl).
+    set_value!(
+        component,
+        :operation_cost,
+        make_renewable_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
+    )
+    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     set_value!(
@@ -291,14 +406,8 @@ function make_renewable_generator(
         calculate_gen_rating(_active_power_limits(gen), reactive_power_limits),
         "MVA",
     )
-    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     _set_optional!(component, :reactive_power_limits, reactive_power_limits, "MVAr")
     set_value!(component, :power_factor, gen.power_factor, "1")
-    set_value!(
-        component,
-        :operation_cost,
-        make_renewable_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
-    )
     set_value!(component, :base_power, device_base_power(sys, gen), "MVA")
     return component
 end
@@ -313,7 +422,7 @@ function make_renewable_generator(
 )
     reactive_power, reactive_power_limits = make_reactive_params(gen)
 
-    component = PO.RenewableNonDispatch()
+    component = stage(PO.RenewableNonDispatch)
     set_value!(
         component,
         :id,
@@ -322,6 +431,9 @@ function make_renewable_generator(
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
+    # `prime_mover_type` staged before any power-family field below — see `_shadow`
+    # (units.jl).
+    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     set_value!(
@@ -330,7 +442,6 @@ function make_renewable_generator(
         calculate_gen_rating(_active_power_limits(gen), reactive_power_limits),
         "MVA",
     )
-    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :power_factor, gen.power_factor, "1")
     set_value!(component, :base_power, device_base_power(sys, gen), "MVA")
     return component
@@ -346,11 +457,19 @@ function make_hydro_dispatch(
     active_power_limits = _active_power_limits(gen)
     reactive_power, reactive_power_limits = make_reactive_params(gen)
 
-    component = PO.HydroDispatch()
+    component = stage(PO.HydroDispatch)
     set_value!(component, :id, register!(get_registry(sys), "HydroDispatch", gen.name))
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
+    # `operation_cost`/`prime_mover_type` staged before any power-family field — see
+    # `_shadow` (units.jl).
+    set_value!(
+        component,
+        :operation_cost,
+        make_hydro_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
+    )
+    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     set_value!(
@@ -359,7 +478,6 @@ function make_hydro_dispatch(
         calculate_gen_rating(active_power_limits, reactive_power_limits),
         "MVA",
     )
-    set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :active_power_limits, active_power_limits, "MW")
     _set_optional!(component, :reactive_power_limits, reactive_power_limits, "MVAr")
     _set_optional!(component, :ramp_limits, make_ramplimits(gen), "MW/min")
@@ -370,11 +488,6 @@ function make_hydro_dispatch(
         "min",
     )
     set_value!(component, :base_power, device_base_power(sys, gen), "MVA")
-    set_value!(
-        component,
-        :operation_cost,
-        make_hydro_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
-    )
     return component
 end
 
@@ -425,10 +538,17 @@ function _add_reservoir!(
     turbine_id::Int,
 )
     name = string(row.name, "_", position)
-    reservoir = PO.HydroReservoir()
+    reservoir = stage(PO.HydroReservoir)
     set_value!(reservoir, :id, register!(get_registry(sys), "HydroReservoir", name))
     set_value!(reservoir, :name, name)
     set_value!(reservoir, :available, row.available)
+    # `head_to_volume_factor`/`operation_cost` staged first — see `_shadow` (units.jl).
+    set_value!(
+        reservoir,
+        :head_to_volume_factor,
+        IC.LinearFunctionData(; proportional_term = 1.0, constant_term = 0.0),
+    )
+    set_value!(reservoir, :operation_cost, PC.HydroReservoirCost(; cost_type = "HYDRO_RES"))
     # level_data_type discriminates the unit of every level quantity below, so it
     # must be set first: left at its USABLE_VOLUME default they would be read as
     # cubic metres.
@@ -444,12 +564,6 @@ function _add_reservoir!(
     set_value!(reservoir, :outflow, 1.0, "MW")
     set_value!(reservoir, :level_targets, row.storage_target, "MWh")
     set_value!(reservoir, :intake_elevation, 0.0, "m")
-    set_value!(
-        reservoir,
-        :head_to_volume_factor,
-        IC.LinearFunctionData(; proportional_term = 1.0, constant_term = 0.0),
-    )
-    set_value!(reservoir, :operation_cost, PC.HydroReservoirCost())
     set_value!(reservoir, link, [turbine_id])
     add_component!(sys, reservoir)
     return get_value(reservoir, :id)
@@ -470,11 +584,17 @@ function make_hydro_turbine(
     turbine_id = register!(get_registry(sys), "HydroTurbine", gen.name)
     make_hydro_reservoirs!(sys, data, gen, storage, turbine_id)
 
-    component = PO.HydroTurbine()
+    component = stage(PO.HydroTurbine)
     set_value!(component, :id, turbine_id)
     set_value!(component, :name, gen.name)
     set_value!(component, :available, gen.available)
     set_value!(component, :bus, bus_id)
+    # `operation_cost` staged before any power-family field — see `_shadow` (units.jl).
+    set_value!(
+        component,
+        :operation_cost,
+        make_hydro_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
+    )
     set_value!(component, :active_power, gen.active_power, "MW")
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     set_value!(
@@ -486,11 +606,6 @@ function make_hydro_turbine(
     set_value!(component, :active_power_limits, active_power_limits, "MW")
     _set_optional!(component, :reactive_power_limits, reactive_power_limits, "MVAr")
     set_value!(component, :base_power, device_base_power(sys, gen), "MVA")
-    set_value!(
-        component,
-        :operation_cost,
-        make_hydro_cost(data, gen, cols; per_unit = uses_per_unit(sys)),
-    )
     _set_optional!(component, :ramp_limits, make_ramplimits(gen), "MW/min")
     _set_optional!(
         component,
@@ -520,7 +635,7 @@ function make_storage(
     end
     reactive_power, reactive_power_limits = make_reactive_params(row)
 
-    component = PO.EnergyReservoirStorage()
+    component = stage(PO.EnergyReservoirStorage)
     set_value!(
         component,
         :id,
@@ -531,6 +646,18 @@ function make_storage(
     set_value!(component, :bus, bus_id)
     set_value!(component, :prime_mover_type, prime_mover_type(gen.unit_type))
     set_value!(component, :storage_technology_type, "OTHER_CHEM")
+    # `operation_cost` staged before any power- or energy-family field — see `_shadow`
+    # (units.jl).
+    set_value!(
+        component,
+        :operation_cost,
+        PC.StorageCost(;
+            cost_type = "STORAGE",
+            fixed = 0.0,
+            shut_down = 0.0,
+            start_up = _coerce(PC.StorageCostStartUp, 0.0),
+        ),
+    )
     set_value!(component, :storage_capacity, row.storage_capacity, "MWh")
     set_value!(
         component,
@@ -565,20 +692,7 @@ function make_storage(
     set_value!(component, :reactive_power, reactive_power, "MVAr")
     _set_optional!(component, :reactive_power_limits, reactive_power_limits, "MVAr")
     set_value!(component, :base_power, row.base_power, "MVA")
-    set_value!(component, :operation_cost, PC.StorageCost(; start_up = 0.0))
     return component
-end
-
-function _as_bool(value::Bool)
-    return value
-end
-
-function _as_bool(value::Nothing)
-    return false
-end
-
-function _as_bool(value::AbstractString)
-    return parse(Bool, lowercase(value))
 end
 
 function _make_generator(::Val{T}, sys, data, gen, bus_id, storage, cols) where {T}

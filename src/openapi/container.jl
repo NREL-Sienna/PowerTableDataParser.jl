@@ -96,16 +96,16 @@ convention it was written in.
 uses_per_unit(sys::OpenAPISystem) = sys.power_units == "COMPONENT_BASE"
 
 """
-Add `component` to the document, first stamping this run's `power_units` onto it when
+Materialize `staged` into the document, first stamping this run's `power_units` onto it when
 its PO type declares the field — the per-component wire-contract requirement every
 power-bearing type carries (a component with none, e.g. a pure topology row, is
 untouched).
 """
-function add_component!(sys::OpenAPISystem, component::T) where {T <: OpenAPI.APIModel}
+function add_component!(sys::OpenAPISystem, staged::Staged{T}) where {T}
     if hasfield(T, :power_units)
-        setproperty!(component, :power_units, sys.power_units)
+        set_value!(staged, :power_units, sys.power_units)
     end
-    PD.add_component!(get_document(sys), component)
+    PD.add_component!(get_document(sys), materialize(staged))
     return
 end
 
@@ -118,10 +118,10 @@ This parser emits no plant-family attributes, so it never writes a `plant_associ
 """
 function add_supplemental_attribute!(
     sys::OpenAPISystem,
-    attribute::OpenAPI.APIModel,
+    attribute::Staged,
     entity_id::Int,
 )
-    PD.add_supplemental_attribute!(get_document(sys), attribute, entity_id)
+    PD.add_supplemental_attribute!(get_document(sys), materialize(attribute), entity_id)
     return
 end
 

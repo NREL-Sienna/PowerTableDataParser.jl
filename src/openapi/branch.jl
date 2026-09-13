@@ -31,7 +31,7 @@ Parallel circuits share one arc: RTS has 12 bus pairs carrying two branches each
 function _add_arc!(sys::OpenAPISystem, from_id::Int, to_id::Int)
     id, created = arc_id!(get_registry(sys), from_id, to_id)
     if created
-        arc = PO.Arc()
+        arc = stage(PC.Arc)
         set_value!(arc, :id, id)
         set_value!(arc, :from_id, from_id)
         set_value!(arc, :to_id, to_id)
@@ -59,6 +59,14 @@ how a target survives into a model that only speaks in bands.
 """
 const NOMINAL_VOLTAGE_BAND = (min = 1.0, max = 1.0)
 
+"""
+Tap position count a transformer keeps when the tables state no COD/tap-count columns.
+
+PSS/E's own default (`NTP1`) for an uncontrolled tap; the tables carry no equivalent
+column, so the alternative is leaving the count unset.
+"""
+const DEFAULT_NUMBER_OF_TAP_POSITIONS = 33
+
 """Assign a property the data may not state."""
 function _set_optional!(component, prop::Symbol, value, unit::AbstractString)
     if isnothing(value)
@@ -69,7 +77,7 @@ function _set_optional!(component, prop::Symbol, value, unit::AbstractString)
 end
 
 function _add_line!(sys::OpenAPISystem, branch, arc::Int)
-    line = PO.Line()
+    line = stage(PO.Line)
     set_value!(line, :id, register!(get_registry(sys), "Line", branch.name))
     set_value!(line, :name, branch.name)
     set_value!(line, :available, true)
@@ -99,7 +107,7 @@ end
 
 function _add_transformer!(sys::OpenAPISystem, branch, arc::Int, from_kv, to_kv)
     reg = get_registry(sys)
-    circuit = PO.TransformerCircuit()
+    circuit = stage(PO.TransformerCircuit)
     set_value!(circuit, :id, next_id!(reg))
     set_value!(circuit, :available, true)
     set_value!(circuit, :arc, arc)
@@ -116,6 +124,7 @@ function _add_transformer!(sys::OpenAPISystem, branch, arc::Int, from_kv, to_kv)
     set_value!(circuit, :control_objective, "FIXED")
     set_value!(circuit, :control_limits, DEFAULT_TAP_CONTROL_BAND, "1")
     set_value!(circuit, :controlled_quantity_limits, NOMINAL_VOLTAGE_BAND, "pu")
+    set_value!(circuit, :number_of_tap_positions, DEFAULT_NUMBER_OF_TAP_POSITIONS)
     set_value!(circuit, :active_power_flow, branch.active_power_flow, "MW")
     set_value!(circuit, :reactive_power_flow, branch.reactive_power_flow, "MVAr")
     set_value!(circuit, :base_power, get_base_power(sys), "MVA")
@@ -123,7 +132,7 @@ function _add_transformer!(sys::OpenAPISystem, branch, arc::Int, from_kv, to_kv)
     set_value!(circuit, :base_voltage_secondary, to_kv, "kV")
     add_component!(sys, circuit)
 
-    xfmr = PO.TwoWindingTransformer()
+    xfmr = stage(PO.TwoWindingTransformer)
     set_value!(xfmr, :id, register!(reg, "TwoWindingTransformer", branch.name))
     set_value!(xfmr, :name, branch.name)
     set_value!(xfmr, :circuit, get_value(circuit, :id))

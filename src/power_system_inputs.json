@@ -766,7 +766,7 @@
     },
     {
       "name": "must_run",
-      "description": "Boolean that indicates if ThermalGen must be online always",
+      "description": "Boolean that indicates if ThermalGen must be online always. Also accepts the commitment_mode enum names (UNCOMMITTED, COMMITTED, SELF_SCHEDULED, RELIABILITY, MUST_RUN), case-insensitive.",
       "default_value": false
     },
     {

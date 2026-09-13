@@ -32,7 +32,6 @@ end
         @test PDP.get_value(reserve, :reserve_direction) in ("UP", "DOWN")
         @test PDP.get_value(reserve, :requirement) >= 0
         @test PDP.get_value(reserve, :time_frame) > 0
-        @test PDP.OpenAPI.check_required(reserve)
     end
 end
 

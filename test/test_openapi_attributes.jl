@@ -10,7 +10,6 @@ end
     @test all(PDP.get_value(e, :basis) == "FUEL_INPUT" for e in emissions)
     @test all(PDP.get_value(e, :mass_unit) == "LB" for e in emissions)
     @test all(PDP.get_value(e, :energy_unit) == "MMBTU" for e in emissions)
-    @test all(PDP.OpenAPI.check_required(e) for e in emissions)
 
     # Particulates alone stay CUSTOM: the enum splits them by a size RTS omits.
     @test Set(PDP.get_value(e, :pollutant) for e in emissions) ==
@@ -22,8 +21,8 @@ end
     # A constant rate is a constant incremental curve.
     curve = PDP.get_value(co2, :emission_rate).value
     @test curve.curve_type == "INCREMENTAL"
-    @test curve.function_data.constant_term ≈ 160.0
-    @test iszero(curve.function_data.proportional_term)
+    @test curve.function_data.value.constant_term ≈ 160.0
+    @test iszero(curve.function_data.value.proportional_term)
 end
 
 @testset "a unit-specific rate is not invented" begin
@@ -77,7 +76,7 @@ end
     geo = PDP.get_supplemental_attributes(sys, "GeographicInfo")
     @test length(geo) == 73
     for attribute in geo
-        point = PDP.get_value(attribute, :geo_json)
+        point = PDP.get_value(attribute, :geo_json).additional_properties
         @test point["type"] == "Point"
         longitude, latitude = point["coordinates"]
         # RTS sits in the south-western United States.

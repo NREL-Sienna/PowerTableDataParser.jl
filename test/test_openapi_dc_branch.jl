@@ -44,11 +44,11 @@ end
 @testset "the loss margin becomes a proportional curve" begin
     sys, _ = _dc()
     line = only(PDP.get_components(sys, "TwoTerminalGenericHVDCLine"))
-    # `loss` is a oneOf, so assignment wraps the curve in TwoTerminalLoss.
-    loss = PDP.get_value(line, :loss).value
+    # `loss.value_curve` is a oneOf (`LossValueCurve`), so assignment wraps the curve.
+    loss = PDP.get_value(line, :loss).value_curve.value
     @test loss.curve_type == "INPUT_OUTPUT"
-    @test loss.function_data.proportional_term ≈ 0.1
-    @test iszero(loss.function_data.constant_term)
+    @test loss.function_data.value.proportional_term ≈ 0.1
+    @test iszero(loss.function_data.value.constant_term)
 end
 
 @testset "make_dc_limits mirrors a stated maximum and rejects an empty pair" begin

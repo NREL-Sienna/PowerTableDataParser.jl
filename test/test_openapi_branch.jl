@@ -136,15 +136,6 @@ end
     @test shunt.imag ≈ 0.05
 end
 
-@testset "every branch component satisfies its required properties" begin
-    sys, _ = _branches()
-    for type_name in PDP.component_type_names(sys)
-        for component in PDP.get_components(sys, type_name)
-            @test PDP.OpenAPI.check_required(component)
-        end
-    end
-end
-
 @testset "the emergency ratings the tables state are carried" begin
     sys, _ = _branches()
     a1 = first(

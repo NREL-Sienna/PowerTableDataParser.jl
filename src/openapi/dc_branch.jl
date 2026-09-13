@@ -39,7 +39,7 @@ function dc_branch_csv_parser!(sys::OpenAPISystem, data::PowerSystemTableData)
         to_id = get_bus_id(reg, Int(dc_branch.connection_points_to))
         arc = _add_arc!(sys, from_id, to_id)
 
-        line = PO.TwoTerminalGenericHVDCLine()
+        line = stage(PO.TwoTerminalGenericHVDCLine)
         set_value!(
             line,
             :id,
@@ -90,8 +90,16 @@ function dc_branch_csv_parser!(sys::OpenAPISystem, data::PowerSystemTableData)
             "MVAr",
         )
         # The tables give one loss margin, so the loss is proportional with no
-        # constant term.
-        set_value!(line, :loss, linear_curve(_as_float(dc_branch.loss)))
+        # constant term. `LossCurve` wraps the value curve with the basis both its axes
+        # are read in, matching the run's own convention.
+        set_value!(
+            line,
+            :loss,
+            PC.LossCurve(;
+                power_units = IC.UnitSystem(get_power_units(sys)),
+                value_curve = PC.LossValueCurve(linear_curve(_as_float(dc_branch.loss))),
+            ),
+        )
         # No device base of its own: base_power records the system base.
         set_value!(line, :base_power, get_base_power(sys), "MVA")
         add_component!(sys, line)

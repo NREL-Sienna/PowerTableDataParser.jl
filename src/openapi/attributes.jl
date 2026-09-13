@@ -35,10 +35,14 @@ incremental curve is a constant function: the marginal rate is the rate.
 """
 function emission_rate_curve(rate::Float64)
     return PC.IncrementalCurve(;
+        curve_type = "INCREMENTAL",
         initial_input = 0.0,
-        function_data = IC.LinearFunctionData(;
-            proportional_term = 0.0,
-            constant_term = rate,
+        function_data = PC.IncrementalCurveFunctionData(
+            IC.LinearFunctionData(;
+                function_type = "LINEAR",
+                proportional_term = 0.0,
+                constant_term = rate,
+            ),
         ),
     )
 end
@@ -85,7 +89,7 @@ function emissions_csv_parser!(sys::OpenAPISystem, data::PowerSystemTableData)
                 continue
             end
             name = string(gen.name, "_", label)
-            attribute = PO.EmissionsData()
+            attribute = stage(PC.EmissionsData)
             set_value!(attribute, :id, register!(reg, "EmissionsData", name))
             set_value!(attribute, :name, name)
             set_value!(attribute, :pollutant, pollutant)
@@ -147,7 +151,7 @@ function _add_forced_outage!(
     recovery_hours::Float64,
     transition_probability::Float64,
 )
-    attribute = PO.GeometricDistributionForcedOutage()
+    attribute = stage(PO.GeometricDistributionForcedOutage)
     set_value!(attribute, :id, next_id!(get_registry(sys)))
     # The schema wants whole minutes, so the conversion is rounded before it is
     # assigned rather than left to a float with spurious sub-minute precision.
@@ -173,7 +177,7 @@ function geographic_info_csv_parser!(sys::OpenAPISystem, data::PowerSystemTableD
         if isnothing(latitude) || isnothing(longitude)
             continue
         end
-        attribute = IC.GeographicInfo()
+        attribute = stage(IC.GeographicInfo)
         set_value!(attribute, :id, next_id!(reg))
         set_value!(
             attribute,

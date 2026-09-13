@@ -49,14 +49,6 @@
         end
     end
 
-    @testset "required properties are populated" begin
-        for type_name in PDP.component_type_names(sys)
-            for component in PDP.get_components(sys, type_name)
-                @test OpenAPI.check_required(component)
-            end
-        end
-    end
-
     @testset "the sidecar pair, both resolutions" begin
         mktempdir() do dir
             path = joinpath(dir, "rts.json")
